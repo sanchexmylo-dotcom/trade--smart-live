@@ -23,9 +23,10 @@ export type Signal = {
 type SignalCardProps = {
   signal: Signal
   index: number
+  isLocked: boolean
 }
 
-export default function SignalCard({ signal, index }: SignalCardProps) {
+export default function SignalCard({ signal, index, isLocked }: SignalCardProps) {
   const [now, setNow] = useState(() => Date.now())
   const buy = signal.direction === 'BUY'
   const createdAt = toDate(signal.createdAt)
@@ -63,14 +64,14 @@ export default function SignalCard({ signal, index }: SignalCardProps) {
     </header>
 
     <div className="mt-2" role="list" aria-label="Trade prices">
-      {priceLevels.map((level, levelIndex) => <PriceLevel key={level.label} {...level} isLast={levelIndex === priceLevels.length - 1 && !analystNote} />)}
+      {priceLevels.map((level, levelIndex) => <PriceLevel key={level.label} {...level} value={isLocked ? '••••••' : level.value} isLocked={isLocked} isLast={levelIndex === priceLevels.length - 1 && !analystNote} />)}
     </div>
 
-    {analystNote && <p className="mt-3 text-sm italic leading-relaxed text-slate-300">{analystNote}</p>}
+    {analystNote && <p className={`mt-3 text-sm italic leading-relaxed text-slate-300 ${isLocked ? 'blur-md select-none pointer-events-none' : ''}`}>{isLocked ? 'VIP analyst commentary locked' : analystNote}</p>}
   </motion.article>
 }
 
-function PriceLevel({ label, value, valueColor, isLast }: { label: string; value: string; valueColor: string; isLast: boolean }) {
+function PriceLevel({ label, value, valueColor, isLocked, isLast }: { label: string; value: string; valueColor: string; isLocked: boolean; isLast: boolean }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   async function copyValue() {
@@ -84,13 +85,13 @@ function PriceLevel({ label, value, valueColor, isLast }: { label: string; value
     window.setTimeout(() => setCopyState('idle'), 1600)
   }
 
-  return <div role="listitem" className={`flex min-w-0 items-center justify-between gap-3 border-b border-slate-800/70 py-2.5 ${isLast ? 'border-b-0 pb-0' : ''}`}>
+  return <div role="listitem" className={`flex min-w-0 items-center justify-between gap-3 border-b border-slate-800/70 py-2.5 ${isLast ? 'border-b-0 pb-0' : ''} ${isLocked ? 'blur-md select-none pointer-events-none' : ''}`}>
     <p className="text-sm text-slate-400">{label}</p>
     <div className="flex min-w-0 items-center gap-2">
       <p className={`truncate font-mono text-sm font-semibold ${valueColor}`}>{value}</p>
-      <button type="button" onClick={copyValue} aria-label={`Copy ${label}: ${value}`} className="grid size-8 shrink-0 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+      {!isLocked && <button type="button" onClick={copyValue} aria-label={`Copy ${label}: ${value}`} className="grid size-8 shrink-0 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
         {copyState === 'copied' ? <Check size={14} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-      </button>
+      </button>}
     </div>
     <span className="sr-only" aria-live="polite">{copyState === 'copied' ? `${label} copied` : copyState === 'failed' ? 'Could not copy price' : ''}</span>
   </div>
