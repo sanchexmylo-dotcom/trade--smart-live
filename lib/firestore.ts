@@ -10,6 +10,7 @@ export type SignalRecord = {
   tp1: string
   tp2?: string
   tp3?: string
+  tp4?: string
   notes?: string
   status: 'ACTIVE' | 'WIN' | 'LOSS'
   createdAt?: unknown
