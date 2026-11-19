@@ -72,6 +72,18 @@ export default function VipForexApp() {
     return () => unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (isVip || activeTab !== 'Signals') return
+    const previousBodyOverflow = document.body.style.overflow
+    const previousDocumentOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.documentElement.style.overflow = previousDocumentOverflow
+    }
+  }, [activeTab, isVip])
+
   function completePayment() { setPaymentOpen(false); setIsVip(true); setPushPrompt(true) }
   function handleBrandTap() {
     brandTapCount.current += 1
@@ -89,7 +101,23 @@ export default function VipForexApp() {
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden border-x border-slate-800/80 bg-[#050814]"><header className="flex items-center justify-between border-b border-[#27272a] px-4 pb-5 pt-6"><button type="button" aria-label="Trade Smart Live" onClick={handleBrandTap} className="relative z-30 pointer-events-auto flex items-center gap-3 text-left transition-transform active:scale-95"><div className="grid h-9 w-9 place-items-center rounded-lg border border-blue-400/30 bg-blue-500/10 text-cyan-300 shadow-lg shadow-blue-950/30"><Crown size={16} /></div><div className="min-w-0 overflow-hidden"><p className="whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold uppercase tracking-[0.2em] text-transparent">TRADE SMART LIVE</p><p className="mt-0.5 whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold text-transparent">Trade Smart Live</p></div></button><div className="flex gap-2"><button type="button" aria-label="Notifications" className="grid h-9 w-9 touch-manipulation place-items-center rounded-lg border border-slate-800/80 bg-slate-900/70 text-zinc-400 shadow-2xl shadow-indigo-950/20 transition-all active:scale-95"><Bell size={16} /></button></div></header>
       <div className="relative z-30 grid grid-cols-3 pointer-events-auto border-b border-[#27272a] bg-slate-950 p-1"><button onClick={() => setActiveTab('Signals')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'Signals' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">VIP Signals</span><span className="sm:hidden">Signals</span></button><button onClick={() => setActiveTab('History')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'History' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">Track Record</span><span className="sm:hidden">History</span></button><button onClick={() => setActiveTab('Journal')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'Journal' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">Journal</span><span className="sm:hidden">Journal</span></button></div>
       <section aria-label="Current tab content" className="min-w-0 flex-1 px-4 pb-28 pt-6">
-        {activeTab === 'Signals' && <><div className="mb-4 flex items-center justify-between"><div><p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-300">Live feed</p><p className="mt-1 text-sm text-zinc-300">{signals.length} active signals</p></div></div><div className="relative min-h-[240px]">{signals.map((signal, index) => <SignalCard key={signal.id} signal={signal} index={index} isLocked={!isVip} />)}{isVip && signals.length === 0 && <p className="rounded-xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">No live signals yet.</p>}{!isVip && <div className="pointer-events-none absolute inset-x-2 top-6 z-20 flex justify-center px-2"><div className="pointer-events-auto mx-auto w-full max-w-[92%] rounded-2xl border border-cyan-500/30 bg-[#0a101d]/85 p-5 text-center shadow-2xl shadow-blue-950/50 backdrop-blur-md"><div className="mx-auto grid h-11 w-11 place-items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 text-cyan-300"><LockKeyhole size={19} /></div><h2 className="mt-3 text-lg font-bold text-white">VIP Signals Locked</h2><p className="mt-2 text-sm leading-relaxed text-slate-300">Unlock the feed to see exact entries and live trade management.</p><button onClick={() => setPricingOpen(true)} className="mt-5 w-full rounded-xl bg-cyan-400 px-4 py-3.5 text-sm font-semibold leading-snug text-slate-950 transition-colors hover:bg-cyan-300 touch-manipulation">Unlock VIP Access for ₦15,000/mo</button></div></div>}</div></>}
+        {activeTab === 'Signals' && <>
+          <div className={!isVip ? 'blur-md pointer-events-none select-none opacity-60' : ''}>
+            <div className="mb-4 flex items-center justify-between"><div><p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-300">Live feed</p><p className="mt-1 text-sm text-zinc-300">{signals.length} active signals</p></div></div>
+            <div className="min-h-[240px]">
+              {signals.map((signal, index) => <SignalCard key={signal.id} signal={signal} index={index} isLocked={!isVip} />)}
+              {isVip && signals.length === 0 && <p className="rounded-xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">No live signals yet.</p>}
+            </div>
+          </div>
+          {!isVip && <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center px-4 pb-16">
+            <div className="pointer-events-auto mx-auto w-full max-w-sm rounded-2xl border border-cyan-500/30 bg-[#0a101d]/85 p-5 text-center shadow-2xl shadow-blue-950/50 backdrop-blur-md">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 text-cyan-300"><LockKeyhole size={19} /></div>
+              <h2 className="mt-3 text-lg font-bold text-white">VIP Signals Locked</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">Unlock the feed to see exact entries and live trade management.</p>
+              <button onClick={() => setPricingOpen(true)} className="mt-5 w-full rounded-xl bg-cyan-400 px-4 py-3.5 text-sm font-semibold leading-snug text-slate-950 transition-colors hover:bg-cyan-300 touch-manipulation">Unlock VIP Access for ₦15,000/mo</button>
+            </div>
+          </div>}
+        </>}
         {activeTab === 'History' && <HistoryView signals={history} />}
         {activeTab === 'Journal' && <JournalTab />}
         {activeTab === 'Tips' && <TipsFeed />}
