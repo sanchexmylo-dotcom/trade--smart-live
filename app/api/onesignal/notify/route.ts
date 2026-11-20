@@ -1,26 +1,35 @@
 import { NextResponse } from 'next/server'
+import { hasValidAdminSession } from '@/lib/admin-session'
+import { sendVipSignalPush } from '@/lib/onesignal-server'
+
+export const runtime = 'nodejs'
+
+const noStore = { 'Cache-Control': 'no-store' }
 
 export async function POST(request: Request) {
-  const appId = process.env.ONESIGNAL_APP_ID
-  const restApiKey = process.env.ONESIGNAL_REST_API_KEY
-  if (!appId || !restApiKey) return NextResponse.json({ error: 'OneSignal is not configured.' }, { status: 503 })
-  const body = await request.json() as { pair: string; action: string; entry: string; sl: string; tp1: string }
-  const response = await fetch('https://onesignal.com/api/v1/notifications', {
-    method: 'POST',
-    headers: { Authorization: `Key ${restApiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      app_id: appId,
-      filters: [{ field: 'tag', key: 'vip', relation: '=', value: 'true' }],
-      headings: { en: 'New VIP Signal' },
-      contents: { en: `${body.pair} ${body.action} · Entry ${body.entry} · TP1 ${body.tp1}` },
-      priority: 10,
-      ttl: 86400,
-      android_channel_id: process.env.ONESIGNAL_ANDROID_CHANNEL_ID,
-      android_sound: 'trade_alert',
-      ios_sound: 'trade_alert.wav',
-      data: { type: 'vip_signal', pair: body.pair },
-    }),
+  if (!hasValidAdminSession(request)) {
+    return NextResponse.json({ error: 'Admin access is required.' }, { status: 401, headers: noStore })
+  }
+  if (request.headers.get('origin') !== new URL(request.url).origin) {
+    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403, headers: noStore })
+  }
+
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid notification request.' }, { status: 400, headers: noStore })
+  }
+  if (!body || typeof body !== 'object' || !('pair' in body) || typeof body.pair !== 'string' || !('action' in body) || !['BUY', 'SELL'].includes(String(body.action)) || !('entry' in body) || typeof body.entry !== 'string' || !('sl' in body) || typeof body.sl !== 'string' || !('tp1' in body) || typeof body.tp1 !== 'string') {
+    return NextResponse.json({ error: 'Invalid signal details.' }, { status: 400, headers: noStore })
+  }
+
+  const result = await sendVipSignalPush({
+    pair: body.pair.trim().replace(/\s+/g, ' ').toUpperCase().slice(0, 30),
+    action: body.action as 'BUY' | 'SELL',
+    entry: body.entry.trim().slice(0, 50),
+    sl: body.sl.trim().slice(0, 50),
+    tp1: body.tp1.trim().slice(0, 50),
   })
-  if (!response.ok) return NextResponse.json({ error: 'OneSignal notification failed.' }, { status: response.status })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json(result, { status: result.sent ? 200 : 502, headers: noStore })
 }

@@ -19,6 +19,7 @@ const nextConfig = {
         ],
       },
       { source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }] },
+      { source: '/onesignal/OneSignalSDKWorker.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }] },
       { source: '/manifest.json', headers: [{ key: 'Cache-Control', value: 'no-cache, must-revalidate' }] },
       { source: '/api/:path*', headers: [{ key: 'Cache-Control', value: 'no-store' }] },
     ]
