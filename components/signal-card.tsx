@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { ArrowDownRight, ArrowUpRight, Check, Copy } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import SignalChartImage from './signal-chart-image'
 
 export type Signal = {
   id: string | number
@@ -15,6 +16,7 @@ export type Signal = {
   tp3?: string
   tp4?: string
   notes?: string
+  hasChartImage?: boolean
   time: string
   status?: 'ACTIVE' | 'WIN' | 'LOSS'
   createdAt?: unknown
@@ -24,9 +26,10 @@ type SignalCardProps = {
   signal: Signal
   index: number
   isLocked: boolean
+  deviceToken: string | null
 }
 
-export default function SignalCard({ signal, index, isLocked }: SignalCardProps) {
+export default function SignalCard({ signal, index, isLocked, deviceToken }: SignalCardProps) {
   const [now, setNow] = useState(() => Date.now())
   const buy = signal.direction === 'BUY'
   const createdAt = toDate(signal.createdAt)
@@ -64,8 +67,19 @@ export default function SignalCard({ signal, index, isLocked }: SignalCardProps)
     </header>
 
     <div className="mt-2" role="list" aria-label="Trade prices">
-      {priceLevels.map((level, levelIndex) => <PriceLevel key={level.label} {...level} value={isLocked ? '••••••' : level.value} isLocked={isLocked} isLast={levelIndex === priceLevels.length - 1 && !analystNote} />)}
+      {priceLevels.map((level, levelIndex) => <PriceLevel key={level.label} {...level} value={isLocked ? '••••••' : level.value} isLocked={isLocked} isLast={levelIndex === priceLevels.length - 1 && !analystNote && !signal.hasChartImage} />)}
     </div>
+
+    {signal.hasChartImage && (isLocked || !deviceToken ? (
+      <div role="img" aria-label="VIP chart screenshot locked" className="mt-4 overflow-hidden rounded-xl border border-slate-700/80 bg-slate-900/80">
+        <div aria-hidden="true" className="flex aspect-video flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_center,_rgba(37,99,235,0.45),_rgba(15,23,42,0.96)_70%)] blur-sm">
+          <div className="flex gap-2"><span className="h-10 w-20 rounded border border-slate-400/40 bg-slate-500/30" /><span className="h-10 w-28 rounded border border-slate-400/40 bg-slate-500/30" /></div>
+          <span className="text-xs font-semibold tracking-wide text-slate-200">VIP chart setup</span>
+        </div>
+      </div>
+    ) : (
+      <SignalChartImage signalId={signal.id} pair={signal.pair} deviceToken={deviceToken} />
+    ))}
 
     {analystNote && <p className={`mt-3 text-sm italic leading-relaxed text-slate-300 ${isLocked ? 'blur-md select-none pointer-events-none' : ''}`}>{isLocked ? 'VIP analyst commentary locked' : analystNote}</p>}
   </motion.article>

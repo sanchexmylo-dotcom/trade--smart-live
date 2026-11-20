@@ -12,6 +12,7 @@ export type SignalRecord = {
   tp3?: string
   tp4?: string
   notes?: string
+  chartImagePath?: string
   status: 'ACTIVE' | 'WIN' | 'LOSS'
   createdAt?: unknown
 }

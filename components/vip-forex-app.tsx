@@ -1,7 +1,8 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bell, CalendarDays, Check, Crown, LayoutDashboard, LockKeyhole, NotebookPen, Sparkles, UserRound, X } from 'lucide-react'
+import Image from 'next/image'
+import { Bell, CalendarDays, Check, LayoutDashboard, LockKeyhole, NotebookPen, Sparkles, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
@@ -133,10 +134,10 @@ export default function VipForexApp() {
 
   useEffect(() => {
     const unsubscribe = subscribeToSignals((records) => {
-      const version = JSON.stringify(records.map((record) => [record.id, record.status, record.pair, record.action, record.entry, record.tp1, record.tp2, record.tp3, record.tp4, record.sl, record.notes]))
+      const version = JSON.stringify(records.map((record) => [record.id, record.status, record.pair, record.action, record.entry, record.tp1, record.tp2, record.tp3, record.tp4, record.sl, record.notes, record.chartImagePath]))
       if (version === signalVersionRef.current) return
       signalVersionRef.current = version
-      const liveSignals = records.map((record) => ({ id: record.id, pair: record.pair, direction: record.action, entry: record.entry, tp: record.tp1, sl: record.sl, tp2: record.tp2, tp3: record.tp3, tp4: record.tp4, notes: record.notes, time: '', status: record.status, createdAt: record.createdAt }))
+      const liveSignals = records.map((record) => ({ id: record.id, pair: record.pair, direction: record.action, entry: record.entry, tp: record.tp1, sl: record.sl, tp2: record.tp2, tp3: record.tp3, tp4: record.tp4, notes: record.notes, hasChartImage: Boolean(record.chartImagePath), time: '', status: record.status, createdAt: record.createdAt }))
       setSignals(liveSignals.filter((signal) => signal.status === 'ACTIVE'))
       setHistory(liveSignals.filter((signal) => signal.status !== 'ACTIVE'))
     })
@@ -180,14 +181,14 @@ export default function VipForexApp() {
   const tabs = [['Signals', LayoutDashboard], ['Journal', NotebookPen], ['Tips', Sparkles], ['Profile', UserRound]] as const
 
   return <main className="mx-auto min-h-screen w-full max-w-md overflow-x-hidden bg-[#050814] text-slate-100 selection:bg-cyan-300 selection:text-slate-950">
-    <div className="flex min-h-screen w-full flex-col overflow-x-hidden border-x border-slate-800/80 bg-[#050814]"><header className="flex items-center justify-between border-b border-[#27272a] px-4 pb-5 pt-6"><button type="button" aria-label="Trade Smart Live" onClick={handleBrandTap} className="relative z-30 pointer-events-auto flex items-center gap-3 text-left transition-transform active:scale-95"><div className="grid h-9 w-9 place-items-center rounded-lg border border-blue-400/30 bg-blue-500/10 text-cyan-300 shadow-lg shadow-blue-950/30"><Crown size={16} /></div><div className="min-w-0 overflow-hidden"><p className="whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold uppercase tracking-[0.2em] text-transparent">TRADE SMART LIVE</p><p className="mt-0.5 whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold text-transparent">Trade Smart Live</p></div></button><div className="flex gap-2"><button type="button" aria-label="Notifications" className="grid h-9 w-9 touch-manipulation place-items-center rounded-lg border border-slate-800/80 bg-slate-900/70 text-zinc-400 shadow-2xl shadow-indigo-950/20 transition-all active:scale-95"><Bell size={16} /></button></div></header>
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden border-x border-slate-800/80 bg-[#050814]"><header className="flex items-center justify-between border-b border-[#27272a] px-4 pb-5 pt-6"><button type="button" aria-label="Trade Smart Live" onClick={handleBrandTap} className="relative z-30 pointer-events-auto flex items-center gap-3 text-left transition-transform active:scale-95"><div className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-blue-400/30 bg-white shadow-lg shadow-blue-950/30"><Image src="/logo.png" alt="" width={36} height={36} priority className="size-full object-contain" /></div><div className="min-w-0 overflow-hidden"><p className="whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold uppercase tracking-[0.2em] text-transparent">TRADE SMART LIVE</p><p className="mt-0.5 whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold text-transparent">Trade Smart Live</p></div></button><div className="flex gap-2"><button type="button" aria-label="Notifications" className="grid h-9 w-9 touch-manipulation place-items-center rounded-lg border border-slate-800/80 bg-slate-900/70 text-zinc-400 shadow-2xl shadow-indigo-950/20 transition-all active:scale-95"><Bell size={16} /></button></div></header>
       <div className="relative z-30 grid grid-cols-3 pointer-events-auto border-b border-[#27272a] bg-slate-950 p-1"><button onClick={() => setActiveTab('Signals')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'Signals' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">VIP Signals</span><span className="sm:hidden">Signals</span></button><button onClick={() => setActiveTab('History')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'History' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">Track Record</span><span className="sm:hidden">History</span></button><button onClick={() => setActiveTab('Journal')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'Journal' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">Journal</span><span className="sm:hidden">Journal</span></button></div>
       <section aria-label="Current tab content" className="min-w-0 flex-1 px-4 pb-28 pt-6">
         {activeTab === 'Signals' && <>
           <div className={!isVip ? 'blur-md pointer-events-none select-none opacity-60' : ''}>
             <div className="mb-4 flex items-center justify-between"><div><p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-300">Live feed</p><p className="mt-1 text-sm text-zinc-300">{signals.length} active signals</p></div></div>
             <div className="min-h-[240px]">
-              {signals.map((signal, index) => <SignalCard key={signal.id} signal={signal} index={index} isLocked={!isVip} />)}
+              {signals.map((signal, index) => <SignalCard key={signal.id} signal={signal} index={index} isLocked={!isVip} deviceToken={deviceIdentity?.deviceToken ?? null} />)}
               {isVip && signals.length === 0 && <p className="rounded-xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">No live signals yet.</p>}
             </div>
           </div>

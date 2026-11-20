@@ -1,4 +1,5 @@
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
+import { getStorage } from 'firebase-admin/storage'
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore'
 
 const appName = 'trade-smart-live-server'
@@ -33,10 +34,13 @@ function getAdminApp() {
         privateKey: serviceAccount.private_key.replace(/\\n/g, '\n'),
       }),
       projectId,
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'trade-smart-live.firebasestorage.app',
     },
     appName,
   )
 }
 
-export const adminDb = getFirestore(getAdminApp())
+export const adminApp = getAdminApp()
+export const adminDb = getFirestore(adminApp)
+export const adminStorage = getStorage(adminApp).bucket(process.env.FIREBASE_STORAGE_BUCKET || 'trade-smart-live.firebasestorage.app')
 export { FieldValue, Timestamp }
