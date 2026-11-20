@@ -2,7 +2,7 @@ import { getApp, getApps, initializeApp } from 'firebase/app'
 import { enableMultiTabIndexedDbPersistence, getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: process.env.apiKey || '',
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
   authDomain: 'trade-smart-live.firebaseapp.com',
   projectId: 'trade-smart-live',
   storageBucket: 'trade-smart-live.firebasestorage.app',

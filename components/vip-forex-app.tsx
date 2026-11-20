@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bell, CalendarDays, Check, Crown, CreditCard, LayoutDashboard, LockKeyhole, NotebookPen, Sparkles, UserRound, X } from 'lucide-react'
+import { Bell, CalendarDays, Check, Crown, LayoutDashboard, LockKeyhole, NotebookPen, Sparkles, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
@@ -11,6 +11,30 @@ import { cn } from '@/lib/utils'
 import { subscribeToSignals } from '@/lib/firestore'
 import { PwaInstallButton } from './pwa-client'
 import SignalCard, { type Signal } from './signal-card'
+import PaymentModal from './payment-modal'
+import ProfileTab from './profile-tab'
+import type { DeviceProfile } from '@/lib/device-profile-types'
+
+type DeviceIdentity = { deviceToken: string; referralCode: string | null }
+type DeviceProfileKey = readonly [string, DeviceIdentity]
+const deviceTokenPattern = /^[a-f0-9]{64}$/
+const referralCodePattern = /^REF-[A-HJ-NP-Z2-9]{6}$/
+
+async function fetchDeviceProfile([url, identity]: DeviceProfileKey) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(identity),
+  })
+  const result = await response.json() as { profile?: DeviceProfile; error?: string }
+  if (!response.ok || !result.profile) throw new Error(result.error || 'Could not sync your device profile.')
+  try {
+    window.localStorage.setItem('trade-smart-live-device-id', result.profile.deviceId)
+  } catch {
+    // The server profile remains authoritative if browser storage is unavailable.
+  }
+  return result.profile
+}
 
 const spring = { type: 'spring' as const, stiffness: 420, damping: 28 }
 const freeBenefits = ['Basic Market Insights & Daily Tips']
@@ -28,11 +52,58 @@ export default function VipForexApp() {
   const [activeTab, setActiveTab] = useState('Signals')
   const [signals, setSignals] = useState<Signal[]>([])
   const [history, setHistory] = useState<Signal[]>([])
-  const [isVip, setIsVip] = useState(false)
+  const [deviceIdentity, setDeviceIdentity] = useState<DeviceIdentity | null>(null)
+  const [deviceSetupError, setDeviceSetupError] = useState('')
   const [pricingOpen, setPricingOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [pushPrompt, setPushPrompt] = useState(false)
   const signalVersionRef = useRef('')
+  const pushPromptShownRef = useRef(false)
+  const profileKey: DeviceProfileKey | null = deviceIdentity ? ['/api/device', deviceIdentity] : null
+  const {
+    data: deviceProfile,
+    error: deviceProfileError,
+    isLoading: deviceProfileLoading,
+    mutate: refreshDeviceProfile,
+  } = useSWR<DeviceProfile, Error, DeviceProfileKey | null>(profileKey, fetchDeviceProfile, {
+    refreshInterval: (profile) => profile ? 15_000 : 0,
+    revalidateOnFocus: true,
+    dedupingInterval: 10_000,
+  })
+  const isVip = deviceProfile?.vipActive === true
+  const isCheckingMembership = !deviceProfile && !deviceProfileError && !deviceSetupError
+
+  useEffect(() => {
+    try {
+      let deviceToken = window.localStorage.getItem('trade-smart-live-device-token')
+      if (!deviceToken || !deviceTokenPattern.test(deviceToken)) {
+        const bytes = window.crypto.getRandomValues(new Uint8Array(32))
+        deviceToken = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+        window.localStorage.setItem('trade-smart-live-device-token', deviceToken)
+      }
+
+      let referralCode = window.localStorage.getItem('trade-smart-live-referral-code')
+      if (referralCode && !referralCodePattern.test(referralCode)) {
+        window.localStorage.removeItem('trade-smart-live-referral-code')
+        referralCode = null
+      }
+
+      const currentUrl = new URL(window.location.href)
+      const incomingReferralCode = currentUrl.searchParams.get('ref')?.trim().toUpperCase() ?? ''
+      if (!referralCode && referralCodePattern.test(incomingReferralCode)) {
+        referralCode = incomingReferralCode
+        window.localStorage.setItem('trade-smart-live-referral-code', referralCode)
+      }
+      if (currentUrl.searchParams.has('ref')) {
+        currentUrl.searchParams.delete('ref')
+        window.history.replaceState(window.history.state, '', currentUrl.toString())
+      }
+
+      setDeviceIdentity({ deviceToken, referralCode })
+    } catch {
+      setDeviceSetupError('This browser could not save a persistent device profile. Enable site storage and reload to continue.')
+    }
+  }, [])
 
   useEffect(() => {
     const chime = () => {
@@ -73,6 +144,18 @@ export default function VipForexApp() {
   }, [])
 
   useEffect(() => {
+    if (!deviceProfile?.vipActive || pushPromptShownRef.current) return
+    const returnUrl = new URL(window.location.href)
+    if (returnUrl.searchParams.get('payment') !== 'return') return
+
+    pushPromptShownRef.current = true
+    setPushPrompt(true)
+    returnUrl.searchParams.delete('payment')
+    returnUrl.searchParams.delete('paymentReference')
+    window.history.replaceState(window.history.state, '', returnUrl.toString())
+  }, [deviceProfile?.vipActive])
+
+  useEffect(() => {
     if (isVip || activeTab !== 'Signals') return
     const previousBodyOverflow = document.body.style.overflow
     const previousDocumentOverflow = document.documentElement.style.overflow
@@ -84,7 +167,6 @@ export default function VipForexApp() {
     }
   }, [activeTab, isVip])
 
-  function completePayment() { setPaymentOpen(false); setIsVip(true); setPushPrompt(true) }
   function handleBrandTap() {
     brandTapCount.current += 1
     if (brandTapTimer.current) window.clearTimeout(brandTapTimer.current)
@@ -109,7 +191,7 @@ export default function VipForexApp() {
               {isVip && signals.length === 0 && <p className="rounded-xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">No live signals yet.</p>}
             </div>
           </div>
-          {!isVip && <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center px-4 pb-16">
+          {!isVip && !isCheckingMembership && <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center px-4 pb-16">
             <div className="pointer-events-auto mx-auto w-full max-w-sm rounded-2xl border border-cyan-500/30 bg-[#0a101d]/85 p-5 text-center shadow-2xl shadow-blue-950/50 backdrop-blur-md">
               <div className="mx-auto grid h-11 w-11 place-items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 text-cyan-300"><LockKeyhole size={19} /></div>
               <h2 className="mt-3 text-lg font-bold text-white">VIP Signals Locked</h2>
@@ -121,12 +203,12 @@ export default function VipForexApp() {
         {activeTab === 'History' && <HistoryView signals={history} />}
         {activeTab === 'Journal' && <JournalTab />}
         {activeTab === 'Tips' && <TipsFeed />}
-        {activeTab === 'Profile' && <div><SimpleView title="Your membership" body={isVip ? 'VIP access is active. Push notifications are enabled for your account.' : 'You are currently on the Free plan.'} action={!isVip ? () => setPricingOpen(true) : undefined} /><PwaInstallButton />{isVip && <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-300">VIP subscription active</div>}</div>}
+        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} /><PwaInstallButton /></div>}
       </section>
       <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 pointer-events-auto border-t border-slate-800/80 bg-[#050814]/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"><div className="mx-auto flex h-16 w-full max-w-md items-center justify-around pointer-events-auto">{tabs.map(([label, Icon]) => <button type="button" key={label} onClick={() => setActiveTab(label)} aria-current={activeTab === label ? 'page' : undefined} className={`relative z-10 flex h-full min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${activeTab === label ? 'text-cyan-300' : 'text-slate-300'}`}><Icon size={18} strokeWidth={activeTab === label ? 2.2 : 1.8} /><span>{label}</span></button>)}</div></nav>
     </div>
     <AnimatePresence>{pricingOpen && <PricingModal onClose={() => setPricingOpen(false)} onUnlock={() => { setPricingOpen(false); setPaymentOpen(true) }} />}</AnimatePresence>
-    <AnimatePresence>{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onComplete={completePayment} />}</AnimatePresence>
+    <AnimatePresence>{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} deviceToken={deviceIdentity?.deviceToken ?? null} />}</AnimatePresence>
     <AnimatePresence>{pushPrompt && <PushPrompt onClose={() => setPushPrompt(false)} />}</AnimatePresence>
   </main>
 }
@@ -145,8 +227,6 @@ const fetchCalendar = (url: string) => fetch(url).then((response) => response.js
 function formatEventTime(value: string) { const parts = new Intl.DateTimeFormat('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(new Date(value)); const formatted = parts.map((part) => part.type === 'dayPeriod' ? part.value.toUpperCase() : part.value).join(''); return `${formatted} WAT` }
 function explainEvent(title: string) { const name = title.toLowerCase(); if (name.includes('cpi') || name.includes('inflation')) return 'Measures inflation. Expect high gold and dollar volatility.'; if (name.includes('non-farm') || name.includes('employment') || name.includes('jobs')) return 'Shows how many jobs were added. It can move the dollar sharply.'; if (name.includes('interest rate') || name.includes('rate decision')) return 'Shows the cost of borrowing. Markets react quickly to the decision.'; if (name.includes('gdp')) return 'Measures economic growth. Stronger growth can support the currency.'; if (name.includes('fomc') || name.includes('central bank')) return 'Central bank guidance can change the direction of major currencies.'; return 'A major economic update that may create sharp market movement.' }
 function CalendarView({ onUpgrade }: { onUpgrade: () => void }) { const { data, isLoading } = useSWR('/api/economic-calendar', fetchCalendar, { refreshInterval: 3600000, dedupingInterval: 3600000, revalidateOnFocus: false }); const [view, setView] = useState<'upcoming' | 'past'>('upcoming'); const redFolderEvents = (data?.events || []).filter((event) => event.impact === 'HIGH'); const now = Date.now(); const visibleEvents = redFolderEvents.filter((event) => { const releaseAt = Date.parse(event.releaseAt); return Number.isFinite(releaseAt) && (view === 'upcoming' ? releaseAt >= now : releaseAt < now) }); return <div><div className="mb-5 flex items-end justify-between"><div><p className="text-sm font-bold uppercase tracking-[0.16em] text-rose-300">Red Folder Market Schedule</p><h2 className="mt-1 max-w-[18rem] text-xl font-bold leading-tight text-white">High-impact news only</h2></div><CalendarDays size={21} className="text-rose-300" /></div><p className="mb-5 text-sm leading-relaxed text-slate-300">Simple, live alerts for news that can move your trades.</p><div className="mb-5 grid grid-cols-2 rounded-xl border border-slate-800 bg-slate-900/70 p-1"><button onClick={() => setView('upcoming')} className={`touch-manipulation rounded-lg py-2.5 text-sm font-bold tracking-wide transition-all active:scale-[0.98] ${view === 'upcoming' ? 'bg-rose-500/15 text-rose-200' : 'text-slate-400'}`}>Upcoming Events</button><button onClick={() => setView('past')} className={`touch-manipulation rounded-lg py-2.5 text-sm font-bold tracking-wide transition-all active:scale-[0.98] ${view === 'past' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>Past Events History</button></div>{isLoading && <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 text-sm text-slate-300">Loading live red folder events...</div>}{data?.error && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-amber-200">{data.error}</div>}{!isLoading && !data?.error && visibleEvents.length === 0 && <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 text-center text-sm text-slate-300">No high-impact (Red Folder) events scheduled for this period.</div>}<div className="space-y-3">{visibleEvents.map((event) => <article key={event.id} className="rounded-xl border border-rose-500/30 bg-slate-900/70 p-4 shadow-lg shadow-rose-950/10"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-1.5"><span className="grid h-8 min-w-12 place-items-center rounded-md border border-rose-500/50 bg-rose-500/10 px-2 text-sm font-bold text-rose-300">{event.currency}</span><span className="rounded bg-rose-500/15 px-2 py-1 text-xs font-bold tracking-wider text-rose-300">RED FOLDER</span></div><time dateTime={event.releaseAt} className="font-mono text-xs font-bold text-slate-300">{formatEventTime(event.releaseAt)}</time></div><h3 className="mt-4 font-bold text-white">{event.title}</h3><p className="mt-1 text-sm leading-relaxed text-slate-300">{explainEvent(event.title)}</p><div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3 text-sm"><div><p className="text-slate-400">Expected</p><p className="mt-1 font-mono font-bold text-cyan-300">{event.forecast}</p></div><div><p className="text-slate-400">Previous</p><p className="mt-1 font-mono font-bold text-white">{event.previous}</p></div></div></article>)}</div><button onClick={onUpgrade} className="relative z-40 pointer-events-auto mt-5 flex w-full touch-manipulation items-center justify-center gap-2 rounded-lg border border-[#3f3f46] py-3 text-sm font-bold text-zinc-300 transition-all active:scale-[0.98]"><LockKeyhole size={14} /> Compare Free and VIP</button></div> }
-function SimpleView({ title, body, action }: { title: string; body: string; action?: () => void }) { return <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-indigo-950/20 p-5"><p className="text-sm font-bold uppercase tracking-[0.16em] text-slate-300">Account</p><h2 className="mt-2 text-xl font-bold">{title}</h2><p className="mt-2 text-sm leading-relaxed text-slate-300">{body}</p>{action && <button onClick={action} className="relative z-40 pointer-events-auto mt-5 h-11 w-full touch-manipulation rounded-lg bg-zinc-100 text-sm font-bold text-zinc-950 transition-all active:scale-95">View VIP pricing</button>}</div> }
-
 function PricingModal({ onClose, onUnlock }: { onClose: () => void; onUnlock: () => void }) {
   return <motion.div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/75 p-4" onClick={onClose}>
     <motion.div onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="vip-pricing-title" className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-cyan-500/30 bg-slate-950 shadow-2xl shadow-cyan-950/40">
@@ -190,5 +270,4 @@ function PlanComparisonCard({ title, benefits, featured = false }: PlanCompariso
     </ul>
   </section>
 }
-function PaymentModal({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) { return <motion.div className="fixed inset-0 z-[60] grid place-items-center bg-black/80 px-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={spring} className="w-full max-w-[380px] rounded-2xl border border-[#3f3f46] bg-[#121215] p-5"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><CreditCard size={18} /><h2 className="font-bold">Paystack checkout</h2></div><button onClick={onClose} aria-label="Close payment" className="text-slate-300"><X size={18} /></button></div><div className="mt-5 rounded-lg border border-[#27272a] bg-[#09090b] p-4"><p className="text-sm text-slate-300">Trade Smart Live VIP</p><p className="mt-2 font-mono text-2xl font-bold">₦15,000</p><p className="mt-1 text-sm text-slate-300">Monthly membership</p></div><div className="mt-4 space-y-3"><input aria-label="Email address" placeholder="Email address" className="h-11 w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 text-sm outline-none focus:border-zinc-100" /><input aria-label="Card number" placeholder="Card number" className="h-11 w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 font-mono text-sm outline-none focus:border-zinc-100" /></div><button onClick={onComplete} className="mt-5 h-11 w-full rounded-lg bg-zinc-100 text-sm font-bold text-zinc-950">Complete payment</button><p className="mt-3 text-center text-sm text-slate-400">Simulation mode · No charge will be made</p></motion.div></motion.div> }
 function PushPrompt({ onClose }: { onClose: () => void }) { return <motion.div className="fixed inset-x-5 bottom-24 z-[70] mx-auto max-w-[420px] rounded-xl border border-[#3f3f46] bg-[#18181b] p-4 shadow-2xl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}><div className="flex gap-3"><Bell size={18} className="mt-0.5" /><div><p className="text-sm font-bold">Enable push notifications?</p><p className="mt-1 text-sm leading-relaxed text-slate-300">Get real-time alerts when a new VIP signal is published.</p><div className="mt-3 flex gap-2"><button onClick={onClose} className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-bold text-zinc-950">Allow notifications</button><button onClick={onClose} className="px-3 py-2 text-sm text-slate-300">Not now</button></div></div></div></motion.div> }
