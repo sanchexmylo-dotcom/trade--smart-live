@@ -5,6 +5,7 @@ export type InstallPromptEvent = Event & {
 
 export type OneSignalClient = {
   init: (options: Record<string, unknown>) => Promise<void>
+  login: (externalId: string) => Promise<void> | void
   Notifications: {
     permission: boolean
     isPushSupported: () => boolean
