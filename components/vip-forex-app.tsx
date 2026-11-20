@@ -88,6 +88,7 @@ export default function VipForexApp() {
   const [installGuideOpen, setInstallGuideOpen] = useState(false)
   const signalVersionRef = useRef('')
   const isVipRef = useRef(false)
+  const vipSyncVersionRef = useRef(0)
   const knownSignalIdsRef = useRef<Set<string> | null>(null)
   const hasSeenServerSignalSnapshotRef = useRef(false)
   const profileKey: DeviceProfileKey | null = deviceIdentity ? ['/api/device', deviceIdentity] : null
@@ -168,15 +169,29 @@ export default function VipForexApp() {
     const syncVipAudience = () => {
       const oneSignal = getOneSignalClient()
       if (!oneSignal) return
-      const update = deviceProfile.vipActive ? oneSignal.User.addTag('vip', 'true') : oneSignal.User.removeTag('vip')
-      void Promise.resolve(update).catch((error: unknown) => {
-        console.error('[OneSignal] VIP audience tag sync failed.', error instanceof Error ? error.message : 'Unknown error.')
+      const syncVersion = ++vipSyncVersionRef.current
+
+      void (async () => {
+        await oneSignal.login(deviceProfile.deviceId)
+        if (syncVersion !== vipSyncVersionRef.current) return
+
+        if (deviceProfile.vipActive) {
+          await oneSignal.User.addTag('vip', 'true')
+        } else {
+          await oneSignal.User.removeTag('vip')
+        }
+      })().catch((error: unknown) => {
+        if (syncVersion !== vipSyncVersionRef.current) return
+        console.error('[OneSignal] VIP audience sync failed.', error instanceof Error ? error.message : 'Unknown error.')
       })
     }
 
     syncVipAudience()
     window.addEventListener('trade-smart-onesignal-ready', syncVipAudience)
-    return () => window.removeEventListener('trade-smart-onesignal-ready', syncVipAudience)
+    return () => {
+      vipSyncVersionRef.current += 1
+      window.removeEventListener('trade-smart-onesignal-ready', syncVipAudience)
+    }
   }, [deviceProfile?.deviceId, deviceProfile?.vipActive])
 
   useEffect(() => {
