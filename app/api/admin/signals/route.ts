@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { hasValidAdminSession } from '@/lib/admin-session'
 import { adminDb, adminStorage, FieldValue } from '@/lib/firebase-admin'
+import { sendVipSignalPush } from '@/lib/onesignal-server'
 
 export const runtime = 'nodejs'
 
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid signal submission.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } })
   }
 
-  const pair = formText(form, 'pair', 30)
+  const pair = formText(form, 'pair', 30).replace(/\s+/g, ' ').toUpperCase()
   const action = formText(form, 'action', 4)
   const entry = formText(form, 'entry', 50)
   const sl = formText(form, 'sl', 50)
@@ -88,7 +89,9 @@ export async function POST(request: Request) {
       })
     }
 
-    await signalRef.set({
+    const assetPairId = createHash('sha256').update(pair).digest('hex')
+    const batch = adminDb.batch()
+    batch.set(signalRef, {
       pair,
       action,
       entry,
@@ -102,10 +105,17 @@ export async function POST(request: Request) {
       status: 'ACTIVE',
       createdAt: FieldValue.serverTimestamp(),
     })
+    batch.set(adminDb.collection('asset_pairs').doc(assetPairId), {
+      pair,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true })
+    await batch.commit()
 
-    return NextResponse.json({ id: signalRef.id }, { headers: { 'Cache-Control': 'no-store' } })
-  } catch {
+    const push = await sendVipSignalPush({ pair, action: action as 'BUY' | 'SELL', entry, sl, tp1 })
+    return NextResponse.json({ id: signalRef.id, pushSent: push.sent }, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
     if (uploadedObject) await uploadedObject.delete({ ignoreNotFound: true }).catch(() => undefined)
+    console.error('[Admin] Signal creation failed.', error instanceof Error ? error.message : 'Unknown Firestore or storage error.')
     return NextResponse.json({ error: 'Could not save this signal. Please try again.' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
   }
 }

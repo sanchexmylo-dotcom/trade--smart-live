@@ -10,7 +10,9 @@ import TipsFeed from './tips-feed'
 import JournalTab from './journal-tab'
 import { cn } from '@/lib/utils'
 import { subscribeToSignals } from '@/lib/firestore'
-import { PwaInstallButton } from './pwa-client'
+import { PwaInstallButton, PushNotificationsButton } from './pwa-client'
+import VipInstallGuide from './vip-install-guide'
+import { getOneSignalClient } from '@/lib/onesignal-client'
 import SignalCard, { type Signal } from './signal-card'
 import PaymentModal from './payment-modal'
 import ProfileTab from './profile-tab'
@@ -20,6 +22,32 @@ type DeviceIdentity = { deviceToken: string; referralCode: string | null }
 type DeviceProfileKey = readonly [string, DeviceIdentity]
 const deviceTokenPattern = /^[a-f0-9]{64}$/
 const referralCodePattern = /^REF-[A-HJ-NP-Z2-9]{6}$/
+const installGuideDismissedKey = 'trade-smart-live-install-guide-dismissed'
+const appInstalledKey = 'trade-smart-live-app-installed'
+
+function playSignalAlert() {
+  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioContextClass) return
+
+  try {
+    const context = new AudioContextClass()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(880, context.currentTime)
+    oscillator.frequency.exponentialRampToValueAtTime(1320, context.currentTime + 0.12)
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.075, context.currentTime + 0.018)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.23)
+    window.setTimeout(() => { void context.close() }, 350)
+  } catch {
+    // Browser audio can be unavailable until a user gesture.
+  }
+}
 
 async function fetchDeviceProfile([url, identity]: DeviceProfileKey) {
   const response = await fetch(url, {
@@ -57,9 +85,11 @@ export default function VipForexApp() {
   const [deviceSetupError, setDeviceSetupError] = useState('')
   const [pricingOpen, setPricingOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
-  const [pushPrompt, setPushPrompt] = useState(false)
+  const [installGuideOpen, setInstallGuideOpen] = useState(false)
   const signalVersionRef = useRef('')
-  const pushPromptShownRef = useRef(false)
+  const isVipRef = useRef(false)
+  const knownSignalIdsRef = useRef<Set<string> | null>(null)
+  const hasSeenServerSignalSnapshotRef = useRef(false)
   const profileKey: DeviceProfileKey | null = deviceIdentity ? ['/api/device', deviceIdentity] : null
   const {
     data: deviceProfile,
@@ -107,33 +137,21 @@ export default function VipForexApp() {
   }, [])
 
   useEffect(() => {
-    const chime = () => {
-      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!AudioContextClass) return
-      const context = new AudioContextClass()
-      const oscillator = context.createOscillator()
-      const gain = context.createGain()
-      oscillator.type = 'sine'
-      oscillator.frequency.setValueAtTime(740, context.currentTime)
-      oscillator.frequency.exponentialRampToValueAtTime(1040, context.currentTime + 0.16)
-      gain.gain.setValueAtTime(0.0001, context.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.06, context.currentTime + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.24)
-      oscillator.connect(gain)
-      gain.connect(context.destination)
-      oscillator.start()
-      oscillator.stop(context.currentTime + 0.25)
-      window.setTimeout(() => { void context.close() }, 350)
-    }
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === 'trade-smart-live-last-signal') chime()
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    isVipRef.current = isVip
+  }, [isVip])
 
   useEffect(() => {
-    const unsubscribe = subscribeToSignals((records) => {
+    const unsubscribe = subscribeToSignals((records, fromCache) => {
+      const currentIds = new Set(records.map((record) => record.id))
+      if (fromCache === false) {
+        if (hasSeenServerSignalSnapshotRef.current && knownSignalIdsRef.current) {
+          const hasNewActiveSignal = records.some((record) => record.status === 'ACTIVE' && !knownSignalIdsRef.current?.has(record.id))
+          if (isVipRef.current && document.visibilityState === 'visible' && hasNewActiveSignal) playSignalAlert()
+        }
+        hasSeenServerSignalSnapshotRef.current = true
+      }
+      knownSignalIdsRef.current = currentIds
+
       const version = JSON.stringify(records.map((record) => [record.id, record.status, record.pair, record.action, record.entry, record.tp1, record.tp2, record.tp3, record.tp4, record.sl, record.notes, record.chartImagePath]))
       if (version === signalVersionRef.current) return
       signalVersionRef.current = version
@@ -145,15 +163,42 @@ export default function VipForexApp() {
   }, [])
 
   useEffect(() => {
-    if (!deviceProfile?.vipActive || pushPromptShownRef.current) return
-    const returnUrl = new URL(window.location.href)
-    if (returnUrl.searchParams.get('payment') !== 'return') return
+    if (!deviceProfile) return
 
-    pushPromptShownRef.current = true
-    setPushPrompt(true)
-    returnUrl.searchParams.delete('payment')
-    returnUrl.searchParams.delete('paymentReference')
-    window.history.replaceState(window.history.state, '', returnUrl.toString())
+    const syncVipAudience = () => {
+      const oneSignal = getOneSignalClient()
+      if (!oneSignal) return
+      const update = deviceProfile.vipActive ? oneSignal.User.addTag('vip', 'true') : oneSignal.User.removeTag('vip')
+      void Promise.resolve(update).catch((error: unknown) => {
+        console.error('[OneSignal] VIP audience tag sync failed.', error instanceof Error ? error.message : 'Unknown error.')
+      })
+    }
+
+    syncVipAudience()
+    window.addEventListener('trade-smart-onesignal-ready', syncVipAudience)
+    return () => window.removeEventListener('trade-smart-onesignal-ready', syncVipAudience)
+  }, [deviceProfile?.deviceId, deviceProfile?.vipActive])
+
+  useEffect(() => {
+    if (!deviceProfile?.vipActive) return
+
+    const returnUrl = new URL(window.location.href)
+    if (returnUrl.searchParams.get('payment') === 'return') {
+      returnUrl.searchParams.delete('payment')
+      returnUrl.searchParams.delete('paymentReference')
+      window.history.replaceState(window.history.state, '', returnUrl.toString())
+    }
+
+    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
+    let wasDismissed = false
+    let wasInstalled = window.tradeSmartAppInstalled === true || isInstalled
+    try {
+      wasDismissed = window.localStorage.getItem(installGuideDismissedKey) === 'true'
+      wasInstalled = wasInstalled || window.localStorage.getItem(appInstalledKey) === 'true'
+    } catch {
+      // The guide can still be dismissed for this session if storage is unavailable.
+    }
+    if (!wasDismissed && !wasInstalled) setInstallGuideOpen(true)
   }, [deviceProfile?.vipActive])
 
   useEffect(() => {
@@ -204,13 +249,21 @@ export default function VipForexApp() {
         {activeTab === 'History' && <HistoryView signals={history} />}
         {activeTab === 'Journal' && <JournalTab />}
         {activeTab === 'Tips' && <TipsFeed />}
-        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} /><PwaInstallButton /></div>}
+        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} /><PushNotificationsButton /><PwaInstallButton /></div>}
       </section>
       <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 pointer-events-auto border-t border-slate-800/80 bg-[#050814]/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"><div className="mx-auto flex h-16 w-full max-w-md items-center justify-around pointer-events-auto">{tabs.map(([label, Icon]) => <button type="button" key={label} onClick={() => setActiveTab(label)} aria-current={activeTab === label ? 'page' : undefined} className={`relative z-10 flex h-full min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${activeTab === label ? 'text-cyan-300' : 'text-slate-300'}`}><Icon size={18} strokeWidth={activeTab === label ? 2.2 : 1.8} /><span>{label}</span></button>)}</div></nav>
     </div>
     <AnimatePresence>{pricingOpen && <PricingModal onClose={() => setPricingOpen(false)} onUnlock={() => { setPricingOpen(false); setPaymentOpen(true) }} />}</AnimatePresence>
     <AnimatePresence>{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} deviceToken={deviceIdentity?.deviceToken ?? null} />}</AnimatePresence>
-    <AnimatePresence>{pushPrompt && <PushPrompt onClose={() => setPushPrompt(false)} />}</AnimatePresence>
+    <AnimatePresence>{installGuideOpen && <VipInstallGuide onContinue={() => {
+      try {
+        window.localStorage.setItem(installGuideDismissedKey, 'true')
+      } catch {
+        // The guide is dismissed for this session if storage is unavailable.
+      }
+      setInstallGuideOpen(false)
+      setActiveTab('Signals')
+    }} />}</AnimatePresence>
   </main>
 }
 
@@ -271,4 +324,3 @@ function PlanComparisonCard({ title, benefits, featured = false }: PlanCompariso
     </ul>
   </section>
 }
-function PushPrompt({ onClose }: { onClose: () => void }) { return <motion.div className="fixed inset-x-5 bottom-24 z-[70] mx-auto max-w-[420px] rounded-xl border border-[#3f3f46] bg-[#18181b] p-4 shadow-2xl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}><div className="flex gap-3"><Bell size={18} className="mt-0.5" /><div><p className="text-sm font-bold">Enable push notifications?</p><p className="mt-1 text-sm leading-relaxed text-slate-300">Get real-time alerts when a new VIP signal is published.</p><div className="mt-3 flex gap-2"><button onClick={onClose} className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-bold text-zinc-950">Allow notifications</button><button onClick={onClose} className="px-3 py-2 text-sm text-slate-300">Not now</button></div></div></div></motion.div> }

@@ -19,10 +19,10 @@ export type SignalRecord = {
 
 export type TipRecord = { id: string; category: string; title: string; content: string; createdAt?: unknown }
 
-export function subscribeToSignals(onChange: (signals: SignalRecord[]) => void) {
+export function subscribeToSignals(onChange: (signals: SignalRecord[], fromCache?: boolean) => void) {
   enableFirestoreOfflineAccess()
-  return onSnapshot(query(collection(db, 'signals'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
-    onChange(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SignalRecord)))
+  return onSnapshot(query(collection(db, 'signals'), orderBy('createdAt', 'desc'), limit(50)), { includeMetadataChanges: true }, (snapshot) => {
+    onChange(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SignalRecord)), snapshot.metadata.fromCache)
   })
 }
 
