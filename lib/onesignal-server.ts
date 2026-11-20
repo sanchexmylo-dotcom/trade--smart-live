@@ -1,4 +1,4 @@
-const fallbackAppId = '7a6d4de7-44d2-4a15-9e28-b1130c08c153'
+const oneSignalAppId = '7a6d4de7-44d2-4a15-9e28-b1130c08c153'
 
 type VipSignalNotification = {
   pair: string
@@ -8,13 +8,24 @@ type VipSignalNotification = {
   tp1: string
 }
 
-export async function sendVipSignalPush(signal: VipSignalNotification) {
-  const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || process.env.ONESIGNAL_APP_ID || fallbackAppId
+type OneSignalResponse = {
+  id?: unknown
+  recipients?: unknown
+}
+
+export type VipSignalPushResult = {
+  accepted: boolean
+  recipients: number | null
+  notificationId?: string
+  error?: string
+}
+
+export async function sendVipSignalPush(signal: VipSignalNotification): Promise<VipSignalPushResult> {
   const restApiKey = process.env.ONESIGNAL_REST_API_KEY
 
   if (!restApiKey) {
     console.error('[OneSignal] Push not sent: ONESIGNAL_REST_API_KEY is missing from the server environment.')
-    return { sent: false, error: 'OneSignal is not configured.' }
+    return { accepted: false, recipients: null, error: 'OneSignal server API key is not configured.' }
   }
 
   try {
@@ -25,7 +36,7 @@ export async function sendVipSignalPush(signal: VipSignalNotification) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        app_id: appId,
+        app_id: oneSignalAppId,
         target_channel: 'push',
         filters: [{ field: 'tag', key: 'vip', relation: '=', value: 'true' }],
         headings: { en: 'New VIP Signal' },
@@ -34,34 +45,35 @@ export async function sendVipSignalPush(signal: VipSignalNotification) {
         ttl: 86400,
         data: { type: 'vip_signal', pair: signal.pair },
       }),
+      signal: AbortSignal.timeout(10000),
     })
 
     const responseText = await response.text()
-    if (!response.ok) {
-      const details = responseText.replaceAll(restApiKey, '[redacted]').slice(0, 1000)
-      console.error('[OneSignal] Push request rejected.', { status: response.status, details })
-      return { sent: false, error: 'OneSignal rejected the push notification.' }
+    let result: OneSignalResponse = {}
+    try {
+      result = JSON.parse(responseText) as OneSignalResponse
+    } catch {
+      result = {}
     }
 
-    let notificationId: string | undefined
-    let recipients: number | undefined
-    try {
-      const result = JSON.parse(responseText) as { id?: unknown; recipients?: unknown }
-      notificationId = typeof result.id === 'string' ? result.id : undefined
-      recipients = typeof result.recipients === 'number' ? result.recipients : undefined
-    } catch {
-      notificationId = undefined
-      recipients = undefined
+    const notificationId = typeof result.id === 'string' && result.id.length > 0 ? result.id : undefined
+    const recipients = typeof result.recipients === 'number' && Number.isInteger(result.recipients) ? result.recipients : null
+    const accepted = response.ok && notificationId !== undefined
+
+    if (!accepted) {
+      const details = responseText.replaceAll(restApiKey, '[redacted]').slice(0, 1000)
+      const error = response.ok
+        ? 'OneSignal did not return a notification ID. Check that subscribed VIP devices match the audience.'
+        : `OneSignal rejected the notification (HTTP ${response.status}).`
+      console.error('[OneSignal] Push notification was not accepted.', { status: response.status, details, recipients })
+      return { accepted: false, recipients, error }
     }
-    if (recipients === 0) {
-      console.error('[OneSignal] Push accepted, but no subscribed VIP recipients matched.', { status: response.status, notificationId, recipients })
-      return { sent: false, error: 'No subscribed VIP devices matched the push audience.' }
-    }
+
     console.info('[OneSignal] VIP signal push accepted.', { status: response.status, notificationId, recipients })
-    return { sent: true }
+    return { accepted: true, recipients, notificationId }
   } catch (error) {
     const details = error instanceof Error ? error.message.replaceAll(restApiKey, '[redacted]').slice(0, 500) : 'Unknown network error.'
     console.error('[OneSignal] Push request could not be completed.', { details })
-    return { sent: false, error: 'OneSignal push delivery could not be completed.' }
+    return { accepted: false, recipients: null, error: 'OneSignal push delivery could not be completed.' }
   }
 }

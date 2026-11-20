@@ -112,7 +112,12 @@ export async function POST(request: Request) {
     await batch.commit()
 
     const push = await sendVipSignalPush({ pair, action: action as 'BUY' | 'SELL', entry, sl, tp1 })
-    return NextResponse.json({ id: signalRef.id, pushSent: push.sent }, { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json({
+      id: signalRef.id,
+      pushAccepted: push.accepted,
+      pushRecipients: push.recipients,
+      ...(push.error ? { pushError: push.error } : {}),
+    }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (uploadedObject) await uploadedObject.delete({ ignoreNotFound: true }).catch(() => undefined)
     console.error('[Admin] Signal creation failed.', error instanceof Error ? error.message : 'Unknown Firestore or storage error.')

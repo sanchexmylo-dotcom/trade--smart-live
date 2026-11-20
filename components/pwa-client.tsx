@@ -40,7 +40,7 @@ export default function PwaClient({ appId }: { appId: string }) {
           await oneSignal.init({
             appId,
             allowLocalhostAsSecureOrigin: true,
-            serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
+            serviceWorkerPath: 'OneSignalSDKWorker.js',
             serviceWorkerParam: { scope: '/onesignal/' },
             notifyButton: { enable: false },
           })
@@ -56,12 +56,6 @@ export default function PwaClient({ appId }: { appId: string }) {
           window.dispatchEvent(new Event('trade-smart-onesignal-error'))
         }
       })
-
-      const script = document.createElement('script')
-      script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'
-      script.defer = true
-      script.dataset.onesignalSdk = 'true'
-      document.head.appendChild(script)
     }
 
     return () => {

@@ -31,5 +31,5 @@ export async function POST(request: Request) {
     sl: body.sl.trim().slice(0, 50),
     tp1: body.tp1.trim().slice(0, 50),
   })
-  return NextResponse.json(result, { status: result.sent ? 200 : 502, headers: noStore })
+  return NextResponse.json(result, { status: result.accepted ? 200 : 502, headers: noStore })
 }
