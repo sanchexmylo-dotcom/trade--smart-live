@@ -1,5 +1,5 @@
-const CACHE_NAME = 'trade-smart-live-v3'
-const CORE_ASSETS = ['/', '/manifest.json', '/icon.svg', '/apple-icon.png']
+const CACHE_NAME = 'trade-smart-live-v4'
+const CORE_ASSETS = ['/', '/manifest.json', '/logo.png', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)))
