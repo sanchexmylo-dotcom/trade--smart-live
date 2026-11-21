@@ -14,15 +14,15 @@ type JournalTrade = {
   entry: number
   stopLoss?: number
   takeProfit?: number
-  exit: number
+  exit?: number
   entryDisplay?: string
   stopLossDisplay?: string
   takeProfitDisplay?: string
   exitDisplay?: string
   riskAmount?: number
   resultUsd?: number
-  outcome: 'WIN' | 'LOSS' | 'BE'
-  pips: number
+  outcome: 'WIN' | 'LOSS' | 'BE' | 'OPEN'
+  pips?: number
   notes: string
   createdAt: string
 }
@@ -51,7 +51,7 @@ function isJournalTrade(value: unknown): value is JournalTrade {
     && trade.pair.length <= 18
     && (trade.direction === 'BUY' || trade.direction === 'SELL')
     && isFinitePositive(trade.entry)
-    && isFinitePositive(trade.exit)
+    && (trade.exit === undefined || isFinitePositive(trade.exit))
     && (trade.stopLoss === undefined || isFinitePositive(trade.stopLoss))
     && (trade.takeProfit === undefined || isFinitePositive(trade.takeProfit))
     && (trade.riskAmount === undefined || isFinitePositive(trade.riskAmount))
@@ -60,9 +60,10 @@ function isJournalTrade(value: unknown): value is JournalTrade {
     && (trade.stopLossDisplay === undefined || (typeof trade.stopLossDisplay === 'string' && trade.stopLossDisplay.length <= 20))
     && (trade.takeProfitDisplay === undefined || (typeof trade.takeProfitDisplay === 'string' && trade.takeProfitDisplay.length <= 20))
     && (trade.exitDisplay === undefined || (typeof trade.exitDisplay === 'string' && trade.exitDisplay.length <= 20))
-    && (trade.outcome === 'WIN' || trade.outcome === 'LOSS' || trade.outcome === 'BE')
-    && typeof trade.pips === 'number'
-    && Number.isFinite(trade.pips)
+    && (trade.outcome === 'WIN' || trade.outcome === 'LOSS' || trade.outcome === 'BE' || trade.outcome === 'OPEN')
+    && (trade.outcome === 'OPEN'
+      ? trade.exit === undefined && trade.pips === undefined
+      : isFinitePositive(trade.exit) && typeof trade.pips === 'number' && Number.isFinite(trade.pips))
     && typeof trade.notes === 'string'
     && trade.notes.length <= 500
     && typeof trade.createdAt === 'string'
@@ -99,7 +100,7 @@ function tradeData(trade: JournalTrade) {
     entry: trade.entry,
     ...(trade.stopLoss === undefined ? {} : { stopLoss: trade.stopLoss }),
     ...(trade.takeProfit === undefined ? {} : { takeProfit: trade.takeProfit }),
-    exit: trade.exit,
+    ...(trade.exit === undefined ? {} : { exit: trade.exit }),
     ...(trade.entryDisplay === undefined ? {} : { entryDisplay: trade.entryDisplay }),
     ...(trade.stopLossDisplay === undefined ? {} : { stopLossDisplay: trade.stopLossDisplay }),
     ...(trade.takeProfitDisplay === undefined ? {} : { takeProfitDisplay: trade.takeProfitDisplay }),
@@ -107,7 +108,7 @@ function tradeData(trade: JournalTrade) {
     ...(trade.riskAmount === undefined ? {} : { riskAmount: trade.riskAmount }),
     ...(trade.resultUsd === undefined ? {} : { resultUsd: trade.resultUsd }),
     outcome: trade.outcome,
-    pips: trade.pips,
+    ...(trade.pips === undefined ? {} : { pips: trade.pips }),
     notes: trade.notes,
     createdAt: trade.createdAt,
     updatedAt: FieldValue.serverTimestamp(),
@@ -121,6 +122,11 @@ async function authorizedDeviceId(request: Request) {
 
 function collectionForDevice(deviceId: string) {
   return adminDb.collection('journals').doc(deviceId).collection('trades')
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message.trim() : ''
+  return message ? message.slice(0, 300) : fallback
 }
 
 async function parseJson(request: Request) {
@@ -142,8 +148,10 @@ export async function GET(request: Request) {
       .filter((trade): trade is JournalTrade => trade !== null)
 
     return NextResponse.json({ trades }, { headers: noStore })
-  } catch {
-    return NextResponse.json({ error: 'Your journal could not be loaded. Please try again.' }, { status: 503, headers: noStore })
+  } catch (error) {
+    const message = getErrorMessage(error, 'Your journal could not be loaded. Please try again.')
+    console.error('[Journal] Load failed.', message)
+    return NextResponse.json({ error: message }, { status: 503, headers: noStore })
   }
 }
 
@@ -160,8 +168,10 @@ export async function POST(request: Request) {
 
     await collectionForDevice(deviceId).doc(trade.id).set(tradeData(trade))
     return NextResponse.json({ id: trade.id }, { headers: noStore })
-  } catch {
-    return NextResponse.json({ error: 'Your trade could not be saved. Please try again.' }, { status: 503, headers: noStore })
+  } catch (error) {
+    const message = getErrorMessage(error, 'Your trade could not be saved. Please try again.')
+    console.error('[Journal] Save failed.', message)
+    return NextResponse.json({ error: message }, { status: 503, headers: noStore })
   }
 }
 
@@ -186,8 +196,10 @@ export async function PATCH(request: Request) {
     if (!updated) return NextResponse.json({ error: 'This trade no longer exists.' }, { status: 404, headers: noStore })
 
     return NextResponse.json({ id: trade.id }, { headers: noStore })
-  } catch {
-    return NextResponse.json({ error: 'Your trade could not be updated. Please try again.' }, { status: 503, headers: noStore })
+  } catch (error) {
+    const message = getErrorMessage(error, 'Your trade could not be updated. Please try again.')
+    console.error('[Journal] Update failed.', message)
+    return NextResponse.json({ error: message }, { status: 503, headers: noStore })
   }
 }
 
@@ -206,7 +218,9 @@ export async function DELETE(request: Request) {
 
     await collectionForDevice(deviceId).doc(id).delete()
     return NextResponse.json({ id }, { headers: noStore })
-  } catch {
-    return NextResponse.json({ error: 'Your trade could not be deleted. Please try again.' }, { status: 503, headers: noStore })
+  } catch (error) {
+    const message = getErrorMessage(error, 'Your trade could not be deleted. Please try again.')
+    console.error('[Journal] Delete failed.', message)
+    return NextResponse.json({ error: message }, { status: 503, headers: noStore })
   }
 }

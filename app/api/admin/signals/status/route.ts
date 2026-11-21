@@ -54,7 +54,7 @@ export async function PATCH(request: Request) {
       }
 
       const existingClosedAt = snapshot.get('closedAt')
-      const closedAt = currentStatus === status && existingClosedAt
+      const closedAt = currentStatus === status && existingClosedAt !== undefined && existingClosedAt !== null
         ? existingClosedAt
         : FieldValue.serverTimestamp()
       transaction.set(signalRef, { status, closedAt }, { merge: true })

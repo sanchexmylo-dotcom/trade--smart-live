@@ -22,7 +22,7 @@ type SignalFilter = 'ALL' | 'ACTIVE' | 'CLOSED'
 type Props = {
   signals: Signal[]
   pendingSignalId: string | null
-  onClose: (id: string, status: 'WIN' | 'LOSS') => void
+  onClose: (id: string, status: 'WIN' | 'LOSS') => Promise<void>
   onDelete: (signal: Pick<Signal, 'id' | 'pair'>) => void
 }
 
@@ -34,9 +34,9 @@ const statusStyles: Record<SignalStatus, string> = {
 
 function PriceCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/70 px-2.5 py-2">
+    <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/70 px-2 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">{label}</p>
-      <p className="mt-1 truncate font-mono text-xs font-semibold tabular-nums text-zinc-100" title={value}>{value || '—'}</p>
+      <p className="mt-1 truncate whitespace-nowrap font-mono text-[11px] font-semibold tabular-nums text-zinc-100" title={value}>{value || '—'}</p>
     </div>
   )
 }
@@ -53,9 +53,14 @@ export default function AdminSignalTrackRecord({ signals, pendingSignalId, onClo
     : signals.filter((signal) => filter === 'ACTIVE' ? signal.status === 'ACTIVE' : signal.status !== 'ACTIVE')
 
   return (
-    <section aria-labelledby="signal-track-record-heading" className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-xl md:p-6">
-      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">Track record</p>
-      <h2 id="signal-track-record-heading" className="mt-1 text-xl font-semibold">Signal track record</h2>
+    <section aria-labelledby="signal-track-record-heading" className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-4 backdrop-blur-xl md:p-5">
+      <header className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Trading desk · outcomes</p>
+          <h2 id="signal-track-record-heading" className="mt-1 text-lg font-semibold text-zinc-100">Signal track record</h2>
+        </div>
+        <span className="shrink-0 font-mono text-xs tabular-nums text-zinc-400">{signals.length} total</span>
+      </header>
 
       <div role="group" aria-label="Filter signals" className="mt-4 flex w-full gap-1 rounded-xl border border-zinc-800 bg-zinc-950/70 p-1">
         {(['ALL', 'ACTIVE', 'CLOSED'] as const).map((item) => (
@@ -95,14 +100,14 @@ export default function AdminSignalTrackRecord({ signals, pendingSignalId, onClo
                 </span>
               </header>
 
-              <div role="group" aria-label={`${signal.pair} entry, stop loss, and take profit prices`} className="mt-3 grid grid-cols-3 gap-2">
+              <div role="group" aria-label={`${signal.pair} entry, stop loss, and take profit prices`} className="mt-3 grid grid-cols-[repeat(3,minmax(0,1fr))] gap-1.5">
                 <PriceCell label="Entry" value={signal.entry} />
                 <PriceCell label="SL" value={signal.sl} />
-                <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/70 px-2.5 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Take profits</p>
-                  <div className="mt-1 flex min-w-0 gap-2 overflow-x-auto pb-0.5">
+                <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70 px-2 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">TPs</p>
+                  <div className="mt-1 flex min-w-0 gap-2 overflow-x-auto whitespace-nowrap pb-0.5">
                     {takeProfits.length ? takeProfits.map((value, index) => (
-                      <span key={`${index}-${value}`} className="shrink-0 font-mono text-xs font-semibold tabular-nums text-zinc-100" title={`TP${index + 1} ${value}`}>
+                      <span key={`${index}-${value}`} className="shrink-0 whitespace-nowrap font-mono text-[11px] font-semibold tabular-nums text-zinc-100" title={`TP${index + 1} ${value}`}>
                         <span className="text-zinc-500">{`TP${index + 1}`}</span> {value}
                       </span>
                     )) : <span className="font-mono text-xs text-zinc-400">—</span>}
@@ -111,11 +116,11 @@ export default function AdminSignalTrackRecord({ signals, pendingSignalId, onClo
               </div>
 
               {signal.status === 'ACTIVE' && (
-                <div className="mt-3 flex items-center gap-2">
-                  <Button type="button" size="sm" disabled={isPending} onClick={() => onClose(signal.id, 'WIN')} className="h-9 flex-1 border border-emerald-400/25 bg-emerald-400/10 text-xs font-bold text-emerald-200 hover:bg-emerald-400/20">
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
+                  <Button type="button" size="sm" disabled={isPending} onClick={async () => { await onClose(signal.id, 'WIN') }} aria-label={`Mark ${signal.pair} as win`} className="h-9 min-w-0 border border-emerald-400/25 bg-emerald-400/10 text-xs font-bold text-emerald-200 hover:bg-emerald-400/20">
                     Win
                   </Button>
-                  <Button type="button" size="sm" disabled={isPending} onClick={() => onClose(signal.id, 'LOSS')} className="h-9 flex-1 border border-rose-400/25 bg-rose-400/10 text-xs font-bold text-rose-200 hover:bg-rose-400/20">
+                  <Button type="button" size="sm" disabled={isPending} onClick={async () => { await onClose(signal.id, 'LOSS') }} aria-label={`Mark ${signal.pair} as loss`} className="h-9 min-w-0 border border-rose-400/25 bg-rose-400/10 text-xs font-bold text-rose-200 hover:bg-rose-400/20">
                     Loss
                   </Button>
                   <Button type="button" variant="ghost" size="icon-sm" disabled={isPending} onClick={() => onDelete(signal)} aria-label={`Delete ${signal.pair} signal`} title="Delete signal" className="size-9 shrink-0 text-zinc-500 hover:bg-rose-400/10 hover:text-rose-200">

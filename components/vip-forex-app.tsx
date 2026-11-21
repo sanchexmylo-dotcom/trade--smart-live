@@ -25,25 +25,44 @@ const referralCodePattern = /^REF-[A-HJ-NP-Z2-9]{6}$/
 const installGuideDismissedKey = 'trade-smart-live-install-guide-dismissed'
 const appInstalledKey = 'trade-smart-live-app-installed'
 
-function playSignalAlert() {
-  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  if (!AudioContextClass) return
+let signalAudioContext: AudioContext | null = null
 
+function getSignalAudioContext() {
+  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioContextClass) return null
+  signalAudioContext ??= new AudioContextClass()
+  return signalAudioContext
+}
+
+async function resumeSignalAudio() {
   try {
-    const context = new AudioContextClass()
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
+    const audioCtx = getSignalAudioContext()
+    if (audioCtx) await audioCtx.resume()
+  } catch {
+    // Browser audio can be unavailable until a user gesture.
+  }
+}
+
+async function playSignalAlert() {
+  try {
+    const audioCtx = getSignalAudioContext()
+    if (!audioCtx) return
+
+    await audioCtx.resume()
+    if (audioCtx.state !== 'running') return
+
+    const oscillator = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
     oscillator.type = 'sine'
-    oscillator.frequency.setValueAtTime(880, context.currentTime)
-    oscillator.frequency.exponentialRampToValueAtTime(1320, context.currentTime + 0.12)
-    gain.gain.setValueAtTime(0.0001, context.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.075, context.currentTime + 0.018)
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22)
+    oscillator.frequency.setValueAtTime(880, audioCtx.currentTime)
+    oscillator.frequency.exponentialRampToValueAtTime(1320, audioCtx.currentTime + 0.12)
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.075, audioCtx.currentTime + 0.018)
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.22)
     oscillator.connect(gain)
-    gain.connect(context.destination)
+    gain.connect(audioCtx.destination)
     oscillator.start()
-    oscillator.stop(context.currentTime + 0.23)
-    window.setTimeout(() => { void context.close() }, 350)
+    oscillator.stop(audioCtx.currentTime + 0.23)
   } catch {
     // Browser audio can be unavailable until a user gesture.
   }
@@ -140,6 +159,16 @@ export default function VipForexApp() {
   useEffect(() => {
     isVipRef.current = isVip
   }, [isVip])
+
+  useEffect(() => {
+    const unlockAudio = () => { void resumeSignalAudio() }
+    window.addEventListener('pointerdown', unlockAudio, { passive: true })
+    window.addEventListener('keydown', unlockAudio)
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio)
+      window.removeEventListener('keydown', unlockAudio)
+    }
+  }, [])
 
   useEffect(() => {
     const unsubscribe = subscribeToSignals((records, fromCache) => {
@@ -262,7 +291,7 @@ export default function VipForexApp() {
           </div>}
         </>}
         {activeTab === 'History' && <HistoryView signals={history} />}
-        {activeTab === 'Journal' && <JournalTab deviceToken={deviceIdentity?.deviceToken ?? null} />}
+        {activeTab === 'Journal' && <JournalTab deviceToken={deviceIdentity?.deviceToken ?? null} referralCode={deviceIdentity?.referralCode ?? null} />}
         {activeTab === 'Tips' && <TipsFeed />}
         {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} /><PushNotificationsButton /><PwaInstallButton /></div>}
       </section>
