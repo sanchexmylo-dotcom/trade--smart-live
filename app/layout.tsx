@@ -3,6 +3,7 @@ import Script from 'next/script'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import PwaClient from '@/components/pwa-client'
+import { Toaster } from 'sonner'
 
 const oneSignalAppId = '7a6d4de7-44d2-4a15-9e28-b1130c08c153'
 
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body className="min-h-screen overflow-x-hidden bg-[#050814] text-slate-100 antialiased">
         <PwaClient appId={oneSignalAppId} />
         {children}
+        <Toaster position="top-center" richColors theme="dark" />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
