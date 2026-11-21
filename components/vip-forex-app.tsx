@@ -262,7 +262,7 @@ export default function VipForexApp() {
           </div>}
         </>}
         {activeTab === 'History' && <HistoryView signals={history} />}
-        {activeTab === 'Journal' && <JournalTab />}
+        {activeTab === 'Journal' && <JournalTab deviceToken={deviceIdentity?.deviceToken ?? null} />}
         {activeTab === 'Tips' && <TipsFeed />}
         {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} /><PushNotificationsButton /><PwaInstallButton /></div>}
       </section>
