@@ -40,7 +40,6 @@ export default function AdminDashboard() {
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [isLockedOut, setIsLockedOut] = useState(false)
   const [signals, setSignals] = useState<Signal[]>([])
-  const closedSignalStatusesRef = useRef(new Map<string, 'WIN' | 'LOSS'>())
   const hasServerSignalSnapshotRef = useRef(false)
   const [pendingSignalId, setPendingSignalId] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
@@ -57,25 +56,20 @@ export default function AdminDashboard() {
     const unsubscribe = subscribeToSignals((records, fromCache) => {
       if (fromCache && !hasServerSignalSnapshotRef.current) return
       if (!fromCache) hasServerSignalSnapshotRef.current = true
-      setSignals(records.map((record) => {
-        if (record.status === 'WIN' || record.status === 'LOSS') {
-          closedSignalStatusesRef.current.set(record.id, closedSignalStatusesRef.current.get(record.id) ?? record.status)
-        }
-        return {
-          id: record.id,
-          pair: record.pair,
-          direction: record.action,
-          entry: record.entry,
-          sl: record.sl,
-          tp1: record.tp1,
-          tp2: record.tp2 ?? '',
-          tp3: record.tp3 ?? '',
-          tp4: record.tp4 ?? '',
-          notes: record.notes ?? '',
-          chartImagePath: record.chartImagePath,
-          status: closedSignalStatusesRef.current.get(record.id) ?? record.status,
-        }
-      }))
+      setSignals(records.map((record) => ({
+        id: record.id,
+        pair: record.pair,
+        direction: record.action,
+        entry: record.entry,
+        sl: record.sl,
+        tp1: record.tp1,
+        tp2: record.tp2 ?? '',
+        tp3: record.tp3 ?? '',
+        tp4: record.tp4 ?? '',
+        notes: record.notes ?? '',
+        chartImagePath: record.chartImagePath,
+        status: record.status,
+      })))
     })
     return () => unsubscribe()
   }, [authenticated])
@@ -146,22 +140,13 @@ export default function AdminDashboard() {
           status: 'error',
           message: `Signal saved, but OneSignal did not accept the push notification. ${result.pushError || 'No notification was created.'}${recipientCountMessage}`,
         })
-      } else if (result.pushRecipients === 0) {
-        setSignalFeedback({
-          status: 'warning',
-          message: 'OneSignal accepted the notification, but it targeted 0 subscribed VIP devices.',
-        })
       } else if (typeof result.pushRecipients === 'number') {
-        const recipientLabel = result.pushRecipients === 1 ? 'recipient' : 'recipients'
-        setSignalFeedback({
-          status: 'success',
-          message: `OneSignal accepted the notification and targeted ${result.pushRecipients} VIP ${recipientLabel}.`,
-        })
+        const message = result.pushRecipients === 0
+          ? 'Signal push sent to VIP subscribers, but no subscribed devices were reported.'
+          : `Signal push sent to ${result.pushRecipients} VIP ${result.pushRecipients === 1 ? 'subscriber' : 'subscribers'}.`
+        setSignalFeedback({ status: 'success', message })
       } else {
-        setSignalFeedback({
-          status: 'success',
-          message: 'OneSignal accepted the notification, but did not report a recipient count.',
-        })
+        setSignalFeedback({ status: 'success', message: 'Signal push sent to VIP subscribers' })
       }
 
       await refreshAssetPairs().catch(() => undefined)
@@ -191,7 +176,10 @@ export default function AdminDashboard() {
         throw new Error(result.error || 'Signal status could not be saved. Please try again.')
       }
 
-      closedSignalStatusesRef.current.set(id, result.status)
+      if (result.status !== status) {
+        throw new Error('The server returned a different signal outcome. Please refresh and try again.')
+      }
+
       setSignals((current) => current.map((item) => item.id === id ? { ...item, status: result.status! } : item))
       const pair = signals.find((item) => item.id === id)?.pair ?? 'Signal'
       toast.success(`${pair} closed as ${result.status}.`)

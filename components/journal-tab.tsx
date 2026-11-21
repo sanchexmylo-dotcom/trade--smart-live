@@ -10,7 +10,7 @@ import { Dialog } from '@base-ui/react/dialog'
 import { Button } from '@/components/ui/button'
 
 type TradeDirection = 'BUY' | 'SELL'
-type TradeOutcome = 'WIN' | 'LOSS' | 'BE'
+type TradeOutcome = 'WIN' | 'LOSS' | 'BE' | 'OPEN'
 
 type JournalTrade = {
   id: string
@@ -19,7 +19,7 @@ type JournalTrade = {
   entry: number
   stopLoss?: number
   takeProfit?: number
-  exit: number
+  exit?: number
   entryDisplay?: string
   stopLossDisplay?: string
   takeProfitDisplay?: string
@@ -27,7 +27,7 @@ type JournalTrade = {
   riskAmount?: number
   resultUsd?: number
   outcome: TradeOutcome
-  pips: number
+  pips?: number
   notes: string
   createdAt: string
 }
@@ -49,7 +49,7 @@ type RiskProfile = {
 }
 
 const JOURNAL_STORAGE_KEY = 'trade-smart-live-journal-v1'
-type JournalKey = readonly [string, string]
+type JournalKey = readonly [string, string, string | null]
 const EMPTY_TRADE_DRAFT: TradeDraft = {
   pair: '',
   direction: 'BUY',
@@ -69,7 +69,7 @@ function isJournalTrade(value: unknown): value is JournalTrade {
     && typeof trade.pair === 'string'
     && (trade.direction === 'BUY' || trade.direction === 'SELL')
     && Number.isFinite(trade.entry)
-    && Number.isFinite(trade.exit)
+    && (trade.exit === undefined || Number.isFinite(trade.exit))
     && (trade.stopLoss === undefined || Number.isFinite(trade.stopLoss))
     && (trade.takeProfit === undefined || Number.isFinite(trade.takeProfit))
     && (trade.riskAmount === undefined || Number.isFinite(trade.riskAmount))
@@ -78,8 +78,10 @@ function isJournalTrade(value: unknown): value is JournalTrade {
     && (trade.stopLossDisplay === undefined || typeof trade.stopLossDisplay === 'string')
     && (trade.takeProfitDisplay === undefined || typeof trade.takeProfitDisplay === 'string')
     && (trade.exitDisplay === undefined || typeof trade.exitDisplay === 'string')
-    && (trade.outcome === 'WIN' || trade.outcome === 'LOSS' || trade.outcome === 'BE')
-    && Number.isFinite(trade.pips)
+    && (trade.outcome === 'WIN' || trade.outcome === 'LOSS' || trade.outcome === 'BE' || trade.outcome === 'OPEN')
+    && (trade.outcome === 'OPEN'
+      ? trade.exit === undefined && trade.pips === undefined
+      : Number.isFinite(trade.exit) && Number.isFinite(trade.pips))
     && typeof trade.notes === 'string'
     && typeof trade.createdAt === 'string'
     && Number.isFinite(Date.parse(trade.createdAt))
@@ -104,7 +106,30 @@ async function readJournalResponse(response: Response) {
   return result.trades.filter(isJournalTrade)
 }
 
-async function fetchJournal([url, deviceToken]: JournalKey) {
+async function ensureDeviceRegistered(deviceToken: string, referralCode: string | null) {
+  const headers = { Authorization: `Bearer ${deviceToken}` }
+  const profileResponse = await fetch('/api/device', { headers, cache: 'no-store' })
+  if (profileResponse.ok) return
+
+  const profileResult = await profileResponse.json().catch(() => null) as { error?: string } | null
+  if (profileResponse.status !== 401 && profileResponse.status !== 404) {
+    throw new Error(profileResult?.error || 'Your device profile could not be checked. Please try again.')
+  }
+
+  const registrationResponse = await fetch('/api/device', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceToken, referralCode }),
+    cache: 'no-store',
+  })
+  const registrationResult = await registrationResponse.json().catch(() => null) as { profile?: unknown; error?: string } | null
+  if (!registrationResponse.ok || !registrationResult?.profile) {
+    throw new Error(registrationResult?.error || 'Your device profile could not be registered. Please try again.')
+  }
+}
+
+async function fetchJournal([url, deviceToken, referralCode]: JournalKey) {
+  await ensureDeviceRegistered(deviceToken, referralCode)
   const headers = { Authorization: `Bearer ${deviceToken}` }
   const response = await fetch(url, { headers, cache: 'no-store' })
   const serverTrades = await readJournalResponse(response)
@@ -174,7 +199,8 @@ function getPipSize(pair: string) {
   return 0.0001
 }
 
-function formatPips(value: number) {
+function formatPips(value: number | undefined) {
+  if (value === undefined) return '—'
   const formatted = value.toFixed(1)
   return value > 0 ? `+${formatted}` : formatted
 }
@@ -211,6 +237,7 @@ const outcomeStyles: Record<TradeOutcome, string> = {
   WIN: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200',
   LOSS: 'border-rose-400/30 bg-rose-400/10 text-rose-200',
   BE: 'border-slate-500/40 bg-slate-700/40 text-slate-200',
+  OPEN: 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200',
 }
 
 const directionStyles: Record<TradeDirection, string> = {
@@ -218,8 +245,8 @@ const directionStyles: Record<TradeDirection, string> = {
   SELL: 'border-rose-400/30 bg-rose-400/10 text-rose-200',
 }
 
-export default function JournalTab({ deviceToken }: { deviceToken: string | null }) {
-  const journalKey: JournalKey | null = deviceToken ? ['/api/journal', deviceToken] : null
+export default function JournalTab({ deviceToken, referralCode = null }: { deviceToken: string | null; referralCode?: string | null }) {
+  const journalKey: JournalKey | null = deviceToken ? ['/api/journal', deviceToken, referralCode] : null
   const { data: trades = [], error, isLoading, mutate } = useSWR<JournalTrade[], Error, JournalKey | null>(
     journalKey,
     fetchJournal,
@@ -237,7 +264,7 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
   }, [error])
 
   const metrics = useMemo(() => {
-    const decisiveTrades = trades.filter((trade) => trade.outcome !== 'BE')
+    const decisiveTrades = trades.filter((trade) => trade.outcome !== 'BE' && trade.outcome !== 'OPEN')
     const wins = trades.filter((trade) => trade.outcome === 'WIN').length
 
     return {
@@ -275,7 +302,7 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
       entry: formatPrice(trade.entry, trade.entryDisplay),
       stopLoss: formatPrice(trade.stopLoss, trade.stopLossDisplay),
       takeProfit: formatPrice(trade.takeProfit, trade.takeProfitDisplay),
-      exit: formatPrice(trade.exit, trade.exitDisplay),
+      exit: trade.exit === undefined ? '' : formatPrice(trade.exit, trade.exitDisplay),
       riskAmount: trade.riskAmount?.toString() ?? '100',
       notes: trade.notes,
     })
@@ -291,40 +318,45 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
     const takeProfit = parsePositiveNumber(draft.takeProfit)
     const exit = parsePositiveNumber(draft.exit)
     const riskAmount = parsePositiveNumber(draft.riskAmount)
+    const invalidFields: string[] = []
 
-    if (!pair || entry === undefined || stopLoss === undefined || takeProfit === undefined || exit === undefined) {
-      setFormError('Enter an asset pair and valid positive prices for entry, SL, TP, and exit.')
+    if (!pair) invalidFields.push('Asset Pair')
+    if (entry === undefined) invalidFields.push('Entry Price')
+    if (stopLoss === undefined) invalidFields.push('Stop Loss')
+    if (takeProfit === undefined) invalidFields.push('Take Profit')
+    if (draft.exit.trim() && exit === undefined) invalidFields.push('Exit Price (enter a positive price or leave it blank for an open trade)')
+    if (riskAmount === undefined) invalidFields.push('Risk at SL (USD)')
+
+    if (invalidFields.length > 0) {
+      setFormError(`Please enter valid values for: ${invalidFields.join(', ')}.`)
       return
     }
 
-    if (riskAmount === undefined) {
-      setFormError('Enter a positive dollar amount at risk if the stop-loss is hit.')
-      return
-    }
-
-    const riskProfile = getRiskProfile(draft.direction, entry, stopLoss, takeProfit)
-    const priceMove = draft.direction === 'BUY' ? exit - entry : entry - exit
-    const pips = Number((priceMove / getPipSize(pair)).toFixed(1))
-    const resultUsd = riskProfile
-      ? Number(((priceMove / riskProfile.riskDistance) * riskAmount).toFixed(2))
+    const riskProfile = getRiskProfile(draft.direction, entry!, stopLoss!, takeProfit!)
+    const priceMove = exit === undefined
+      ? undefined
+      : draft.direction === 'BUY' ? exit - entry! : entry! - exit
+    const pips = priceMove === undefined ? undefined : Number((priceMove / getPipSize(pair)).toFixed(1))
+    const resultUsd = priceMove !== undefined && riskProfile
+      ? Number(((priceMove / riskProfile.riskDistance) * riskAmount!).toFixed(2))
       : undefined
     const existingTrade = trades.find((trade) => trade.id === editingTradeId)
     const trade: JournalTrade = {
       id: editingTradeId ?? crypto.randomUUID(),
       pair,
       direction: draft.direction,
-      entry,
-      stopLoss,
-      takeProfit,
-      exit,
+      entry: entry!,
+      stopLoss: stopLoss!,
+      takeProfit: takeProfit!,
+      ...(exit === undefined ? {} : { exit }),
       entryDisplay: draft.entry.trim(),
       stopLossDisplay: draft.stopLoss.trim(),
       takeProfitDisplay: draft.takeProfit.trim(),
-      exitDisplay: draft.exit.trim(),
-      riskAmount,
+      ...(exit === undefined ? {} : { exitDisplay: draft.exit.trim() }),
+      riskAmount: riskAmount!,
       resultUsd,
-      outcome: pips > 0 ? 'WIN' : pips < 0 ? 'LOSS' : 'BE',
-      pips,
+      outcome: pips === undefined ? 'OPEN' : pips > 0 ? 'WIN' : pips < 0 ? 'LOSS' : 'BE',
+      ...(pips === undefined ? {} : { pips }),
       notes: draft.notes.trim(),
       createdAt: existingTrade?.createdAt ?? new Date().toISOString(),
     }
@@ -337,6 +369,7 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
     setFormError('')
     setIsSaving(true)
     try {
+      await ensureDeviceRegistered(deviceToken, referralCode)
       const response = await fetch('/api/journal', {
         method: editingTradeId ? 'PATCH' : 'POST',
         headers: {
@@ -461,7 +494,7 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
                     Asset Pair
-                    <input name="pair" value={draft.pair} onChange={(event) => updateDraft('pair', event.target.value)} required maxLength={18} placeholder="XAUUSD, EURUSD, GBPJPY" autoComplete="off" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    <input name="pair" value={draft.pair} onChange={(event) => updateDraft('pair', event.target.value)} maxLength={18} placeholder="XAUUSD, EURUSD, GBPJPY" autoComplete="off" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
                   </label>
 
                   <div className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
@@ -486,27 +519,28 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
 
                   <label className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
                     Entry Price
-                    <input name="entry" value={draft.entry} onChange={(event) => updateDraft('entry', event.target.value)} type="text" inputMode="decimal" maxLength={20} required placeholder="2650.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    <input name="entry" value={draft.entry} onChange={(event) => updateDraft('entry', event.target.value)} type="text" inputMode="decimal" maxLength={20} placeholder="2650.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
                   </label>
 
                   <label className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
                     Stop Loss (SL)
-                    <input name="stopLoss" value={draft.stopLoss} onChange={(event) => updateDraft('stopLoss', event.target.value)} type="text" inputMode="decimal" maxLength={20} required placeholder="2648.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    <input name="stopLoss" value={draft.stopLoss} onChange={(event) => updateDraft('stopLoss', event.target.value)} type="text" inputMode="decimal" maxLength={20} placeholder="2648.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
                   </label>
 
                   <label className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
                     Take Profit (TP)
-                    <input name="takeProfit" value={draft.takeProfit} onChange={(event) => updateDraft('takeProfit', event.target.value)} type="text" inputMode="decimal" maxLength={20} required placeholder="2655.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    <input name="takeProfit" value={draft.takeProfit} onChange={(event) => updateDraft('takeProfit', event.target.value)} type="text" inputMode="decimal" maxLength={20} placeholder="2655.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
                   </label>
 
                   <label className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
-                    Exit Price
-                    <input name="exit" value={draft.exit} onChange={(event) => updateDraft('exit', event.target.value)} type="text" inputMode="decimal" maxLength={20} required placeholder="2655.00" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    Exit Price <span className="font-normal text-slate-400">(optional for open trades)</span>
+                    <input name="exit" value={draft.exit} onChange={(event) => updateDraft('exit', event.target.value)} type="text" inputMode="decimal" maxLength={20} placeholder="Leave blank while open" aria-describedby="exit-price-help" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none placeholder:text-slate-500 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    <span id="exit-price-help" className="text-xs font-normal leading-relaxed text-slate-400">Leave blank for an open trade or note.</span>
                   </label>
 
                   <label className="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">
                     Risk at SL (USD)
-                    <input name="riskAmount" value={draft.riskAmount} onChange={(event) => updateDraft('riskAmount', event.target.value)} type="text" inputMode="decimal" maxLength={14} required aria-describedby="risk-amount-help" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
+                    <input name="riskAmount" value={draft.riskAmount} onChange={(event) => updateDraft('riskAmount', event.target.value)} type="text" inputMode="decimal" maxLength={14} aria-describedby="risk-amount-help" className="h-11 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 font-mono text-base text-white outline-none focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-400/30" />
                     <span id="risk-amount-help" className="text-xs font-normal leading-relaxed text-slate-400">Default $100. Result scales with your realized R multiple.</span>
                   </label>
 
@@ -588,7 +622,7 @@ export default function JournalTab({ deviceToken }: { deviceToken: string | null
 
                   <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-800 pt-3 text-sm sm:grid-cols-3">
                     <p className="text-slate-400">
-                      Outcome: <span className={`font-semibold ${outcomeStyles[trade.outcome].split(' ').at(-1)}`}>{trade.outcome} ({formatPips(trade.pips)} pips)</span>
+                      Outcome: <span className={`font-semibold ${outcomeStyles[trade.outcome].split(' ').at(-1)}`}>{trade.outcome === 'OPEN' ? 'OPEN' : `${trade.outcome} (${formatPips(trade.pips)} pips)`}</span>
                     </p>
                     <p className="text-slate-400">R:R: <span className="font-mono font-semibold text-cyan-200">{formatRewardRisk(rewardRisk)}</span></p>
                     <p className="text-slate-400">Result: <span className={`font-mono font-bold ${trade.resultUsd === undefined ? 'text-slate-300' : trade.resultUsd >= 0 ? 'text-emerald-200' : 'text-rose-200'}`}>{formatUsd(trade.resultUsd)}</span></p>
