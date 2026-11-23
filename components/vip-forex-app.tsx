@@ -209,9 +209,18 @@ export default function VipForexApp() {
         } else {
           await oneSignal.User.removeTag('vip')
         }
+        if (syncVersion !== vipSyncVersionRef.current) return
+        console.info('[OneSignal] VIP tag update submitted by the browser SDK.', {
+          deviceId: deviceProfile.deviceId,
+          vipTag: deviceProfile.vipActive ? 'true' : 'removed',
+        })
       })().catch((error: unknown) => {
         if (syncVersion !== vipSyncVersionRef.current) return
-        console.error('[OneSignal] VIP audience sync failed.', error instanceof Error ? error.message : 'Unknown error.')
+        console.error('[OneSignal] VIP audience tag sync failed.', {
+          deviceId: deviceProfile.deviceId,
+          desiredVipTag: deviceProfile.vipActive ? 'true' : 'removed',
+          details: error instanceof Error ? error.message : 'Unknown error.',
+        })
       })
     }
 

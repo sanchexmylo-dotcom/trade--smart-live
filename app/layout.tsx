@@ -5,7 +5,7 @@ import './globals.css'
 import PwaClient from '@/components/pwa-client'
 import { Toaster } from 'sonner'
 
-const oneSignalAppId = '7a6d4de7-44d2-4a15-9e28-b1130c08c153'
+const oneSignalAppId = process.env.ONESIGNAL_APP_ID || '7a6d4de7-44d2-4a15-9e28-b1130c08c153'
 
 export const metadata: Metadata = {
   title: 'Trade Smart Live',

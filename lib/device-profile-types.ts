@@ -10,6 +10,12 @@ export type DeviceProfile = {
   rewardDaysAvailable: number
 }
 
+export type OneSignalVipTagStatus = {
+  state: 'confirmed_active' | 'confirmed_inactive' | 'pending' | 'not_found' | 'unavailable' | 'error'
+  pushSubscription: 'subscribed' | 'not_subscribed' | 'unknown'
+  message: string
+}
+
 export type AdminDeviceRecord = DeviceProfile & {
   referredByDeviceId: string | null
   referredByCode: string | null
