@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid notification request.' }, { status: 400, headers: noStore })
   }
-  if (!body || typeof body !== 'object' || !('pair' in body) || typeof body.pair !== 'string' || !('action' in body) || !['BUY', 'SELL'].includes(String(body.action)) || !('entry' in body) || typeof body.entry !== 'string' || !('sl' in body) || typeof body.sl !== 'string' || !('tp1' in body) || typeof body.tp1 !== 'string') {
+  if (!body || typeof body !== 'object' || !('pair' in body) || typeof body.pair !== 'string' || !('action' in body) || !['BUY', 'SELL'].includes(String(body.action)) || !('entry' in body) || typeof body.entry !== 'string' || !('sl' in body) || typeof body.sl !== 'string' || !('tp1' in body) || typeof body.tp1 !== 'string' || ('tp2' in body && typeof body.tp2 !== 'string') || ('tp3' in body && typeof body.tp3 !== 'string') || ('tp4' in body && typeof body.tp4 !== 'string')) {
     return NextResponse.json({ error: 'Invalid signal details.' }, { status: 400, headers: noStore })
   }
 
@@ -30,6 +30,9 @@ export async function POST(request: Request) {
     entry: body.entry.trim().slice(0, 50),
     sl: body.sl.trim().slice(0, 50),
     tp1: body.tp1.trim().slice(0, 50),
+    ...('tp2' in body && typeof body.tp2 === 'string' && body.tp2.trim() ? { tp2: body.tp2.trim().slice(0, 50) } : {}),
+    ...('tp3' in body && typeof body.tp3 === 'string' && body.tp3.trim() ? { tp3: body.tp3.trim().slice(0, 50) } : {}),
+    ...('tp4' in body && typeof body.tp4 === 'string' && body.tp4.trim() ? { tp4: body.tp4.trim().slice(0, 50) } : {}),
   })
   return NextResponse.json(result, { status: result.accepted ? 200 : 502, headers: noStore })
 }
