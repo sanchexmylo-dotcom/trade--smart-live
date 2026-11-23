@@ -1,7 +1,10 @@
 export type DeviceProfile = {
   deviceId: string
+  memberName: string
+  displayName: string
   referralCode: string
   vipActive: boolean
+  planDurationDays: number
   planExpiresAt: string | null
   createdAt: string | null
   invitedFriends: number
@@ -15,6 +18,11 @@ export type OneSignalVipTagStatus = {
   pushSubscription: 'subscribed' | 'not_subscribed' | 'unknown'
   message: string
 }
+
+export type AdminDeviceDirectoryEntry = Pick<
+  DeviceProfile,
+  'deviceId' | 'memberName' | 'displayName' | 'vipActive' | 'planDurationDays' | 'planExpiresAt' | 'createdAt'
+>
 
 export type AdminDeviceRecord = DeviceProfile & {
   referredByDeviceId: string | null

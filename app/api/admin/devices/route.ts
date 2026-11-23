@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { hasValidAdminSession } from '@/lib/admin-session'
-import { changeVipAccess, getAdminDeviceRecord, isDeviceId } from '@/lib/device-profile-server'
+import { changeVipAccess, getAdminDeviceRecord, isDeviceId, listAdminDeviceDirectory } from '@/lib/device-profile-server'
 import { getOneSignalVipTagStatus, syncOneSignalVipTag } from '@/lib/onesignal-server'
 
 export const runtime = 'nodejs'
@@ -14,7 +14,17 @@ function unauthorized() {
 export async function GET(request: Request) {
   if (!hasValidAdminSession(request)) return unauthorized()
 
-  const deviceId = new URL(request.url).searchParams.get('deviceId')?.trim().toUpperCase() ?? ''
+  const searchParams = new URL(request.url).searchParams
+  if (searchParams.get('directory') === '1') {
+    try {
+      const devices = await listAdminDeviceDirectory()
+      return NextResponse.json({ devices }, { headers: noStore })
+    } catch {
+      return NextResponse.json({ error: 'Member directory could not be loaded. Please try again.' }, { status: 503, headers: noStore })
+    }
+  }
+
+  const deviceId = searchParams.get('deviceId')?.trim().toUpperCase() ?? ''
   if (!isDeviceId(deviceId)) {
     return NextResponse.json({ error: 'Enter a valid TSL device ID.' }, { status: 400, headers: noStore })
   }

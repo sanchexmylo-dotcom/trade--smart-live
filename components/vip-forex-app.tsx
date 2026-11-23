@@ -124,6 +124,21 @@ export default function VipForexApp() {
   const isVip = deviceProfile?.vipActive === true
   const isCheckingMembership = !deviceProfile && !deviceProfileError && !deviceSetupError
 
+  async function saveMemberName(memberName: string) {
+    if (!deviceIdentity) throw new Error('Your device profile is still loading. Try again in a moment.')
+    const response = await fetch('/api/device', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${deviceIdentity.deviceToken}`,
+      },
+      body: JSON.stringify({ memberName }),
+    })
+    const result = await response.json() as { profile?: DeviceProfile; error?: string }
+    if (!response.ok || !result.profile) throw new Error(result.error || 'Your name could not be saved. Please try again.')
+    await refreshDeviceProfile(result.profile, { revalidate: false })
+  }
+
   useEffect(() => {
     try {
       let deviceToken = window.localStorage.getItem('trade-smart-live-device-token')
@@ -302,7 +317,7 @@ export default function VipForexApp() {
         {activeTab === 'History' && <HistoryView signals={history} />}
         {activeTab === 'Journal' && <JournalTab deviceToken={deviceIdentity?.deviceToken ?? null} referralCode={deviceIdentity?.referralCode ?? null} />}
         {activeTab === 'Tips' && <TipsFeed />}
-        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} /><PushNotificationsButton /><PwaInstallButton /></div>}
+        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} onSaveMemberName={saveMemberName} /><PushNotificationsButton /><PwaInstallButton /></div>}
       </section>
       <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 pointer-events-auto border-t border-slate-800/80 bg-[#050814]/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"><div className="mx-auto flex h-16 w-full max-w-md items-center justify-around pointer-events-auto">{tabs.map(([label, Icon]) => <button type="button" key={label} onClick={() => setActiveTab(label)} aria-current={activeTab === label ? 'page' : undefined} className={`relative z-10 flex h-full min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${activeTab === label ? 'text-cyan-300' : 'text-slate-300'}`}><Icon size={18} strokeWidth={activeTab === label ? 2.2 : 1.8} /><span>{label}</span></button>)}</div></nav>
     </div>

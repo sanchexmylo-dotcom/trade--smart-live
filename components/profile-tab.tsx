@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Check, Copy, Crown, Gift, Users } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Copy, Crown, Gift, Save, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +23,7 @@ type ProfileTabProps = {
   error?: string
   onRetry: () => void
   onUpgrade: () => void
+  onSaveMemberName: (memberName: string) => Promise<void>
 }
 
 function formatDate(value: string | null) {
@@ -33,9 +34,32 @@ function formatDate(value: string | null) {
     : date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export default function ProfileTab({ profile, isLoading, error, onRetry, onUpgrade }: ProfileTabProps) {
+export default function ProfileTab({ profile, isLoading, error, onRetry, onUpgrade, onSaveMemberName }: ProfileTabProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [copyError, setCopyError] = useState('')
+  const [memberName, setMemberName] = useState(profile?.memberName ?? '')
+  const [isSavingName, setIsSavingName] = useState(false)
+  const [nameError, setNameError] = useState('')
+  const [nameSaved, setNameSaved] = useState(false)
+
+  useEffect(() => {
+    setMemberName(profile?.memberName ?? '')
+  }, [profile?.deviceId, profile?.memberName])
+
+  async function saveMemberName() {
+    setNameError('')
+    setNameSaved(false)
+    setIsSavingName(true)
+    try {
+      await onSaveMemberName(memberName.trim())
+      setMemberName(memberName.trim())
+      setNameSaved(true)
+    } catch (caught) {
+      setNameError(caught instanceof Error ? caught.message : 'Your name could not be saved. Please try again.')
+    } finally {
+      setIsSavingName(false)
+    }
+  }
   const referralLink = profile
     ? `${appUrl}/?ref=${encodeURIComponent(profile.referralCode)}`
     : ''
@@ -75,6 +99,24 @@ export default function ProfileTab({ profile, isLoading, error, onRetry, onUpgra
               : 'Your account is on the Free plan. VIP access is enabled after verified payment.'}
           </p>
           <FieldGroup className="gap-4">
+            <Field>
+              <FieldLabel htmlFor="member-name" className="text-slate-200">Member name</FieldLabel>
+              <Input
+                id="member-name"
+                value={memberName}
+                onChange={(event) => { setMemberName(event.target.value); setNameSaved(false) }}
+                maxLength={80}
+                autoComplete="name"
+                placeholder="Add the name you want shown to admin"
+                aria-invalid={Boolean(nameError)}
+                className="border-slate-700 bg-slate-950 text-white placeholder:text-slate-500"
+              />
+              <FieldDescription className="text-slate-400">Shown in the member directory. You can update or clear it anytime.</FieldDescription>
+              <Button type="button" variant="outline" disabled={isSavingName || memberName.trim() === profile.memberName} onClick={() => void saveMemberName()} className="min-h-10 w-fit border-cyan-300/30 text-cyan-100">
+                {isSavingName ? 'Saving name…' : nameSaved ? <><Check data-icon="inline-start" /> Name saved</> : <><Save data-icon="inline-start" /> Save name</>}
+              </Button>
+              {nameError && <p role="alert" className="text-sm text-rose-300">{nameError}</p>}
+            </Field>
             <Field>
               <FieldLabel htmlFor="device-id" className="text-slate-200">Persistent device ID</FieldLabel>
               <div className="flex gap-2">
