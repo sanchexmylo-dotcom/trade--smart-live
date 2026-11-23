@@ -189,6 +189,9 @@ type VipSignalNotification = {
   entry: string
   sl: string
   tp1: string
+  tp2?: string
+  tp3?: string
+  tp4?: string
 }
 
 type OneSignalResponse = {
@@ -223,9 +226,23 @@ export async function sendVipSignalPush(signal: VipSignalNotification): Promise<
         target_channel: 'push',
         filters: [{ field: 'tag', key: 'vip', relation: '=', value: 'true' }],
         headings: { en: 'New VIP Signal' },
-        contents: { en: `${signal.pair} ${signal.action} · Entry ${signal.entry} · TP1 ${signal.tp1} · SL ${signal.sl}` },
+        contents: {
+          en: [
+            `${signal.pair} ${signal.action}`,
+            `Entry: ${signal.entry} | SL: ${signal.sl}`,
+            [
+              { label: 'TP1', value: signal.tp1 },
+              { label: 'TP2', value: signal.tp2 },
+              { label: 'TP3', value: signal.tp3 },
+              { label: 'TP4', value: signal.tp4 },
+            ]
+              .filter((target): target is { label: string; value: string } => typeof target.value === 'string' && target.value.trim().length > 0)
+              .map((target) => `${target.label}: ${target.value}`)
+              .join(' | '),
+          ].join('\n'),
+        },
         priority: 10,
-        ttl: 86400,
+        ttl: 3600,
         data: { type: 'vip_signal', pair: signal.pair },
       }),
       signal: AbortSignal.timeout(10000),

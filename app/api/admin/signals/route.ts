@@ -111,7 +111,16 @@ export async function POST(request: Request) {
     }, { merge: true })
     await batch.commit()
 
-    const push = await sendVipSignalPush({ pair, action: action as 'BUY' | 'SELL', entry, sl, tp1 })
+    const push = await sendVipSignalPush({
+      pair,
+      action: action as 'BUY' | 'SELL',
+      entry,
+      sl,
+      tp1,
+      ...(tp2 ? { tp2 } : {}),
+      ...(tp3 ? { tp3 } : {}),
+      ...(tp4 ? { tp4 } : {}),
+    })
     return NextResponse.json({
       id: signalRef.id,
       pushAccepted: push.accepted,
