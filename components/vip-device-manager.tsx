@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,21 +27,29 @@ async function fetchDevice(url: string): Promise<DeviceResponse> {
   return result
 }
 
-function formatDate(value: string | null) {
+function formatDateTime(value: string | null) {
   if (!value) return 'Not set'
   const date = new Date(value)
   return Number.isNaN(date.getTime())
     ? 'Not set'
-    : date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
+    : date.toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
 }
 
-export default function VipDeviceManager() {
+export default function VipDeviceManager({ selectedDeviceId }: { selectedDeviceId?: string }) {
   const [deviceIdInput, setDeviceIdInput] = useState('')
   const [lookupId, setLookupId] = useState('')
   const [lookupError, setLookupError] = useState('')
   const [actionError, setActionError] = useState('')
   const [extensionDays, setExtensionDays] = useState('30')
   const [isSaving, setIsSaving] = useState(false)
+  useEffect(() => {
+    if (!selectedDeviceId) return
+    setDeviceIdInput(selectedDeviceId)
+    setLookupError('')
+    setActionError('')
+    setLookupId(selectedDeviceId)
+  }, [selectedDeviceId])
+
   const { data, error: requestError, isLoading, mutate } = useSWR<DeviceResponse>(
     lookupId ? `/api/admin/devices?deviceId=${encodeURIComponent(lookupId)}` : null,
     fetchDevice,
@@ -84,7 +92,7 @@ export default function VipDeviceManager() {
   const device = data?.device
   const requestErrorMessage = requestError instanceof Error ? requestError.message : ''
 
-  return <Card className="mb-8 border-slate-800/80 bg-[#0a101d]/85 text-slate-100 shadow-xl shadow-black/20">
+  return <Card id="vip-device-management" className="scroll-mt-6 border-slate-800/80 bg-slate-900/70 text-slate-100 shadow-xl shadow-blue-950/15">
     <CardHeader>
       <CardDescription className="text-slate-300">VIP MEMBERSHIP ADMIN</CardDescription>
       <CardTitle className="text-xl text-white">Find a device &amp; manage access</CardTitle>
@@ -107,15 +115,17 @@ export default function VipDeviceManager() {
       {device && <section aria-label={`Membership record for ${device.deviceId}`} className="flex flex-col gap-4 rounded-xl border border-slate-800 bg-slate-950/90 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-mono text-sm font-semibold text-white">{device.deviceId}</p>
-            <p className="mt-1 text-xs text-slate-400">Created {formatDate(device.createdAt)}</p>
+            <p className="text-sm font-semibold text-white">{device.memberName.trim() || 'Name not added'}</p>
+            <p className="mt-1 font-mono text-xs text-cyan-100">{device.deviceId}</p>
+            <p className="mt-1 text-xs text-slate-400">Created {formatDateTime(device.createdAt)}</p>
           </div>
           <Badge variant={device.vipActive ? 'secondary' : 'outline'} className={device.vipActive ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-slate-700 text-slate-300'}>
             {device.vipActive ? 'VIP active' : 'VIP inactive'}
           </Badge>
         </div>
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <RecordValue label="Plan expiry" value={formatDate(device.planExpiresAt)} />
+          <RecordValue label="Plan / duration" value={device.planDurationDays > 0 ? `${device.planDurationDays}-day VIP` : device.planExpiresAt ? '30-day VIP' : 'Standard plan'} />
+          <RecordValue label="VIP expiry" value={formatDateTime(device.planExpiresAt)} />
           <RecordValue label="Referral code" value={device.referralCode} />
           <RecordValue label="Invited friends" value={device.invitedFriends.toLocaleString('en-NG')} />
           <RecordValue label="Reward days" value={`${device.rewardDaysAvailable} available`} />
@@ -123,7 +133,7 @@ export default function VipDeviceManager() {
           <RecordValue label="Active VIP referrals" value={device.activeVipReferrals.toLocaleString('en-NG')} />
           <RecordValue label="Reward days earned" value={device.rewardDaysEarned.toLocaleString('en-NG')} />
         </dl>
-        <section aria-label="OneSignal VIP audience status" className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-[#0a101d] p-3 sm:flex-row sm:items-center sm:justify-between">
+        <section aria-label="OneSignal VIP audience status" className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-slate-200">OneSignal VIP tag</p>
@@ -169,7 +179,7 @@ export default function VipDeviceManager() {
 }
 
 function RecordValue({ label, value }: { label: string; value: string }) {
-  return <div className="min-w-0 rounded-xl border border-slate-800/80 bg-[#0a101d] p-3">
+  return <div className="min-w-0 rounded-xl border border-slate-800/80 bg-slate-900/70 p-3">
     <dt className="text-xs text-slate-500">{label}</dt>
     <dd className="mt-1 break-words font-mono text-xs text-slate-200">{value}</dd>
   </div>

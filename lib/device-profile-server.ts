@@ -78,10 +78,19 @@ async function buildProfile(deviceId: string, data: Record<string, unknown>): Pr
   const planExpiresAt = dateFromFirestore(data.planExpiresAt)
   const createdAt = dateFromFirestore(data.createdAt)
 
+  const memberName = typeof data.memberName === 'string'
+    ? data.memberName
+    : typeof data.displayName === 'string'
+      ? data.displayName
+      : ''
+
   return {
     deviceId,
+    memberName,
+    displayName: memberName,
     referralCode: typeof data.referralCode === 'string' ? data.referralCode : '',
     vipActive: isStoredVipActive(data, now),
+    planDurationDays: nonNegativeInteger(data.planDurationDays) || (planExpiresAt ? 30 : 0),
     planExpiresAt: planExpiresAt?.toISOString() ?? null,
     createdAt: createdAt?.toISOString() ?? null,
     invitedFriends: referralSnapshot.size,
@@ -111,6 +120,34 @@ export async function getDeviceProfile(deviceId: string) {
 export async function getDeviceProfileForToken(deviceToken: string) {
   const deviceId = await getDeviceIdForToken(deviceToken)
   return deviceId ? getDeviceProfile(deviceId) : null
+}
+
+export async function listAdminDeviceDirectory() {
+  const snapshot = await devices().get()
+  const now = Date.now()
+
+  return snapshot.docs
+    .filter((document) => isDeviceId(document.id))
+    .map((document) => {
+      const data = document.data()
+      const planExpiresAt = dateFromFirestore(data.planExpiresAt)
+      const createdAt = dateFromFirestore(data.createdAt)
+      const memberName = typeof data.memberName === 'string'
+        ? data.memberName
+        : typeof data.displayName === 'string'
+          ? data.displayName
+          : ''
+
+      return {
+        deviceId: document.id,
+        memberName,
+        displayName: memberName,
+        vipActive: isStoredVipActive(data, now),
+        planDurationDays: nonNegativeInteger(data.planDurationDays) || (planExpiresAt ? 30 : 0),
+        planExpiresAt: planExpiresAt?.toISOString() ?? null,
+        createdAt: createdAt?.toISOString() ?? null,
+      }
+    })
 }
 
 export async function getAdminDeviceRecord(deviceId: string): Promise<AdminDeviceRecord | null> {
@@ -222,10 +259,13 @@ export async function registerDevice(deviceToken: string, rawReferralCode: unkno
 
       transaction.create(currentDeviceRef, {
         deviceId: normalizedDeviceId,
+        memberName: '',
+        displayName: '',
         referralCode: candidateReferralCode,
         referredByDeviceId: shouldCreateReferral ? normalizedReferrerId : null,
         referredByCode: shouldCreateReferral ? submittedReferralCode : null,
         vipActive: false,
+        planDurationDays: 0,
         planExpiresAt: null,
         firstPaidAt: null,
         invitedFriends: 0,
@@ -271,6 +311,29 @@ export async function registerDevice(deviceToken: string, rawReferralCode: unkno
   throw new Error('Could not allocate a unique device identifier.')
 }
 
+export async function updateDeviceMemberName(deviceToken: string, rawMemberName: string) {
+  if (!isDeviceToken(deviceToken)) return null
+  const memberName = rawMemberName.trim()
+  if (memberName.length > 80 || /[\u0000-\u001f\u007f]/.test(memberName)) {
+    throw new Error('Enter a name with no more than 80 characters.')
+  }
+
+  const deviceId = await getDeviceIdForToken(deviceToken)
+  if (!deviceId) return null
+
+  const deviceRef = devices().doc(deviceId)
+  const snapshot = await deviceRef.get()
+  if (!snapshot.exists) return null
+
+  await deviceRef.update({
+    memberName,
+    displayName: memberName,
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  return getDeviceProfileForToken(deviceToken)
+}
+
 export async function changeVipAccess(
   deviceId: string,
   action: { type: 'set'; active: boolean } | { type: 'extend'; days: number },
@@ -299,8 +362,16 @@ export async function changeVipAccess(
       nextExpiry = now + 30 * 24 * 60 * 60 * 1000
     }
 
+    const currentPlanDays = nonNegativeInteger(currentData.planDurationDays) || (currentExpiry > now ? 30 : 0)
+    const planDurationDays = action.type === 'extend'
+      ? (currentExpiry > now ? currentPlanDays : 0) + action.days
+      : action.active && currentExpiry <= now
+        ? 30
+        : currentPlanDays
+
     transaction.update(deviceRef, {
       vipActive: active,
+      planDurationDays,
       planExpiresAt: nextExpiry > 0 ? Timestamp.fromMillis(nextExpiry) : null,
       updatedAt: FieldValue.serverTimestamp(),
     })

@@ -58,10 +58,14 @@ async function creditVerifiedPayment(
 
     const device = deviceSnapshot.data() ?? {}
     const now = Date.now()
-    const nextExpiry = Math.max(now, expiryMillis(device.planExpiresAt)) + VIP_PLAN_DAYS * 24 * 60 * 60 * 1000
+    const currentExpiry = expiryMillis(device.planExpiresAt)
+    const nextExpiry = Math.max(now, currentExpiry) + VIP_PLAN_DAYS * 24 * 60 * 60 * 1000
+    const storedPlanDays = Number(device.planDurationDays)
+    const currentPlanDays = Number.isSafeInteger(storedPlanDays) && storedPlanDays > 0 ? storedPlanDays : VIP_PLAN_DAYS
 
     transaction.update(deviceRef, {
       vipActive: true,
+      planDurationDays: currentExpiry > now ? currentPlanDays + VIP_PLAN_DAYS : VIP_PLAN_DAYS,
       planExpiresAt: Timestamp.fromMillis(nextExpiry),
       firstPaidAt: device.firstPaidAt ?? FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),

@@ -34,7 +34,7 @@ const statusStyles: Record<SignalStatus, string> = {
 
 function PriceCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-800/80 bg-[#050814]/80 px-3 py-3">
+    <div className="min-w-0 rounded-xl border border-slate-800/80 bg-slate-950/80 px-3 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
       <p className="mt-1 min-w-0 break-all font-mono text-xs font-semibold leading-relaxed tabular-nums text-slate-100" title={value}>{value || '—'}</p>
     </div>
@@ -53,7 +53,7 @@ export default function AdminSignalTrackRecord({ signals, pendingSignalId, onClo
     : signals.filter((signal) => filter === 'ACTIVE' ? signal.status === 'ACTIVE' : signal.status !== 'ACTIVE')
 
   return (
-    <section aria-labelledby="signal-track-record-heading" className="rounded-2xl border border-slate-800/80 bg-[#0a101d]/85 p-4 shadow-xl shadow-black/20 backdrop-blur-xl md:p-5">
+    <section aria-labelledby="signal-track-record-heading" className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 shadow-xl shadow-blue-950/15 backdrop-blur-xl md:p-5">
       <header className="flex items-end justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Trading desk · outcomes</p>
@@ -62,7 +62,7 @@ export default function AdminSignalTrackRecord({ signals, pendingSignalId, onClo
         <span className="shrink-0 font-mono text-xs tabular-nums text-slate-400">{signals.length} total</span>
       </header>
 
-      <div role="group" aria-label="Filter signals" className="mt-4 grid w-full grid-cols-3 gap-1.5 rounded-xl border border-slate-800/80 bg-[#050814]/80 p-1.5">
+      <div role="group" aria-label="Filter signals" className="mt-4 grid w-full grid-cols-3 gap-1.5 rounded-xl border border-slate-800/80 bg-slate-950/80 p-1.5">
         {(['ALL', 'ACTIVE', 'CLOSED'] as const).map((item) => (
           <button
             key={item}
