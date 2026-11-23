@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { adminDb, FieldValue, Timestamp } from '@/lib/firebase-admin'
 import { verifyMonnifyPayment } from '@/lib/monnify'
+import { syncOneSignalVipTag } from '@/lib/onesignal-server'
 
 export const runtime = 'nodejs'
 
@@ -167,6 +168,9 @@ export async function POST(request: Request) {
     if (!credited) {
       return NextResponse.json({ error: 'Payment could not be applied.' }, { status: 409, headers: noStore })
     }
+
+    const deviceId = paymentSnapshot.get('deviceId')
+    if (typeof deviceId === 'string') await syncOneSignalVipTag(deviceId, true)
 
     return NextResponse.json({ received: true }, { headers: noStore })
   } catch {

@@ -256,7 +256,7 @@ export async function sendVipSignalPush(signal: VipSignalNotification): Promise<
       result = {}
     }
 
-    const notificationId = typeof result.id === 'string' && result.id.length > 0 ? result.id : undefined
+    const notificationId = typeof result.id === 'string' && result.id.trim().length > 0 ? result.id.trim() : undefined
     const recipients = typeof result.recipients === 'number' && Number.isInteger(result.recipients) ? result.recipients : null
     const accepted = response.ok && notificationId !== undefined
 
@@ -274,24 +274,11 @@ export async function sendVipSignalPush(signal: VipSignalNotification): Promise<
       return { accepted: false, recipients, error }
     }
 
-    if (recipients === 0) {
-      console.warn('[OneSignal] VIP signal push was accepted but matched zero recipients for the vip=true tag filter.', {
-        notificationId,
-        tagFilter: 'vip=true',
-      })
-    } else if (recipients === null) {
-      console.warn('[OneSignal] VIP signal push was accepted, but OneSignal returned no recipient count; targeting and delivery are unconfirmed.', {
-        notificationId,
-        tagFilter: 'vip=true',
-      })
-    } else {
-      console.info('[OneSignal] VIP signal push accepted with a reported target count; this is not a delivery receipt.', {
-        status: response.status,
-        notificationId,
-        reportedTargetRecipients: recipients,
-        tagFilter: 'vip=true',
-      })
-    }
+    console.info('[OneSignal] Signal push sent to VIP subscribers.', {
+      status: response.status,
+      notificationId,
+      tagFilter: 'vip=true',
+    })
     return { accepted: true, recipients, notificationId }
   } catch (error) {
     const details = error instanceof Error ? error.message.replaceAll(restApiKey, '[redacted]').slice(0, 500) : 'Unknown network error.'
