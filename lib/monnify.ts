@@ -1,17 +1,35 @@
-const monnifyApiKey = () => process.env.NEXT_PUBLIC_MONNIFY_API_KEY?.trim()
+import 'server-only'
+
+const monnifyApiKey = () => process.env.MONNIFY_API_KEY?.trim()
 const monnifySecretKey = () => process.env.MONNIFY_SECRET_KEY?.trim()
 const monnifyContractCode = () => process.env.MONNIFY_CONTRACT_CODE?.trim()
 
 function monnifyBaseUrl() {
-  return process.env.VERCEL_ENV === 'production'
+  return process.env.VERCEL_ENV?.trim().toLowerCase() === 'production'
     ? 'https://api.monnify.com'
     : 'https://sandbox.monnify.com'
+}
+
+function monnifyErrorMessage(body: unknown, fallback: string, status: number) {
+  const responseBody = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const providerMessage = [responseBody.responseMessage, responseBody.message, responseBody.error_description, responseBody.error]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ?.trim()
+    .slice(0, 500)
+
+  return `${providerMessage || fallback} (Monnify HTTP ${status})`
 }
 
 async function getMonnifyAccessToken() {
   const apiKey = monnifyApiKey()
   const secretKey = monnifySecretKey()
-  if (!apiKey || !secretKey) throw new Error('Monnify server credentials are not configured.')
+  const missingCredentials = [
+    !apiKey && 'MONNIFY_API_KEY',
+    !secretKey && 'MONNIFY_SECRET_KEY',
+  ].filter((name): name is string => Boolean(name))
+  if (missingCredentials.length > 0) {
+    throw new Error(`Missing server environment variable${missingCredentials.length === 1 ? '' : 's'}: ${missingCredentials.join(', ')}.`)
+  }
 
   const response = await fetch(`${monnifyBaseUrl()}/api/v1/auth/login`, {
     method: 'POST',
@@ -26,7 +44,7 @@ async function getMonnifyAccessToken() {
   const accessToken = body?.responseBody?.accessToken
 
   if (!response.ok || body?.requestSuccessful !== true || typeof accessToken !== 'string') {
-    throw new Error('Monnify authentication failed.')
+    throw new Error(monnifyErrorMessage(body, 'Monnify authentication failed.', response.status))
   }
 
   return accessToken
@@ -41,7 +59,7 @@ export async function initializeMonnifyCheckout(input: {
   metadata: Record<string, string | null>
 }) {
   const contractCode = monnifyContractCode()
-  if (!contractCode) throw new Error('Monnify contract code is not configured.')
+  if (!contractCode) throw new Error('MONNIFY_CONTRACT_CODE is not configured on the server.')
 
   const accessToken = await getMonnifyAccessToken()
   const response = await fetch(`${monnifyBaseUrl()}/api/v1/merchant/transactions/init-transaction`, {
@@ -70,7 +88,7 @@ export async function initializeMonnifyCheckout(input: {
   const transactionReference = body?.responseBody?.transactionReference
 
   if (!response.ok || body?.requestSuccessful !== true || typeof checkoutUrl !== 'string') {
-    throw new Error('Monnify could not initialize checkout.')
+    throw new Error(monnifyErrorMessage(body, 'Monnify could not initialize checkout.', response.status))
   }
 
   return {
