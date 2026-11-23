@@ -93,19 +93,19 @@ export async function POST(request: Request) {
         updatedAt: FieldValue.serverTimestamp(),
       })
       return NextResponse.json({ checkoutUrl: checkout.checkoutUrl }, { headers: noStore })
-    } catch {
+    } catch (error) {
       await paymentRef.update({
         status: 'initialization_failed',
         updatedAt: FieldValue.serverTimestamp(),
       })
       return NextResponse.json(
-        { error: 'Secure checkout could not be started. Please try again.' },
+        { error: error instanceof Error ? error.message : 'Monnify checkout initialization failed.' },
         { status: 502, headers: noStore },
       )
     }
   } catch {
     return NextResponse.json(
-      { error: 'Secure checkout could not be started. Please try again.' },
+      { error: 'Checkout initialization failed because of a server error.' },
       { status: 503, headers: noStore },
     )
   }

@@ -107,7 +107,7 @@ async function creditVerifiedPayment(
 }
 
 export async function POST(request: Request) {
-  const secret = process.env.MONNIFY_SECRET_KEY
+  const secret = process.env.MONNIFY_SECRET_KEY?.trim()
   if (!secret) {
     return NextResponse.json({ error: 'Webhook verification is not configured.' }, { status: 503, headers: noStore })
   }

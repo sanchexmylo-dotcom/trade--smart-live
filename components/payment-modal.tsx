@@ -39,9 +39,12 @@ export default function PaymentModal({ onClose, deviceToken }: PaymentModalProps
         },
         body: JSON.stringify({ customerEmail: email.trim() }),
       })
-      const result = await response.json() as CheckoutResponse
-      if (!response.ok || !result.checkoutUrl) {
-        throw new Error(result.error || 'Secure checkout could not be started.')
+      const result = await response.json().catch(() => null) as CheckoutResponse | null
+      if (!response.ok || !result?.checkoutUrl) {
+        const message = typeof result?.error === 'string' && result.error.trim()
+          ? result.error.trim()
+          : 'Checkout initialization failed.'
+        throw new Error(`${message} (HTTP ${response.status})`)
       }
       window.location.assign(result.checkoutUrl)
     } catch (caught) {
