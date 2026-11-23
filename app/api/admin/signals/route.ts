@@ -116,6 +116,7 @@ export async function POST(request: Request) {
       id: signalRef.id,
       pushAccepted: push.accepted,
       pushRecipients: push.recipients,
+      ...(push.notificationId ? { pushNotificationId: push.notificationId } : {}),
       ...(push.error ? { pushError: push.error } : {}),
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

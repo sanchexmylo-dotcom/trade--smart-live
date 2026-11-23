@@ -13,11 +13,11 @@ import {
 } from '@/components/ui/card'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import type { AdminDeviceRecord } from '@/lib/device-profile-types'
+import type { AdminDeviceRecord, OneSignalVipTagStatus } from '@/lib/device-profile-types'
 
 const deviceIdPattern = /^TSL-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/i
 
-type DeviceResponse = { device: AdminDeviceRecord }
+type DeviceResponse = { device: AdminDeviceRecord; oneSignal: OneSignalVipTagStatus }
 type ErrorResponse = { error?: string }
 
 async function fetchDevice(url: string): Promise<DeviceResponse> {
@@ -60,7 +60,7 @@ export default function VipDeviceManager() {
     setLookupId(normalizedId)
   }
 
-  async function updateDevice(change: { action: 'set'; active: boolean } | { action: 'extend'; days: number }) {
+  async function updateDevice(change: { action: 'set'; active: boolean } | { action: 'extend'; days: number } | { action: 'sync' }) {
     if (!data?.device) return
     setIsSaving(true)
     setActionError('')
@@ -123,6 +123,32 @@ export default function VipDeviceManager() {
           <RecordValue label="Active VIP referrals" value={device.activeVipReferrals.toLocaleString('en-NG')} />
           <RecordValue label="Reward days earned" value={device.rewardDaysEarned.toLocaleString('en-NG')} />
         </dl>
+        <section aria-label="OneSignal VIP audience status" className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-zinc-200">OneSignal VIP tag</p>
+              <Badge variant={data.oneSignal.state === 'confirmed_active' ? 'secondary' : 'outline'} className={data.oneSignal.state === 'confirmed_active' ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'}>
+                {data.oneSignal.state === 'confirmed_active' ? 'Confirmed active' : data.oneSignal.state === 'confirmed_inactive' ? 'Not active' : data.oneSignal.state === 'pending' ? 'Verification pending' : data.oneSignal.state === 'not_found' ? 'Not linked' : data.oneSignal.state === 'unavailable' ? 'Unverified' : 'Verification error'}
+              </Badge>
+            </div>
+            <p role="status" className="mt-1 text-xs leading-relaxed text-zinc-400">{data.oneSignal.message}</p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-300">
+              {data.oneSignal.state === 'confirmed_active' && data.oneSignal.pushSubscription === 'subscribed'
+                ? 'This subscribed device matches the vip=true push filter.'
+                : data.oneSignal.state === 'confirmed_active' && data.oneSignal.pushSubscription === 'not_subscribed'
+                  ? 'The vip=true tag is active, but OneSignal reports no enabled push subscription for this device.'
+                  : data.oneSignal.state === 'confirmed_inactive'
+                    ? 'This device does not currently match the vip=true push filter.'
+                    : data.oneSignal.state === 'not_found'
+                      ? 'No OneSignal user matches this TSL device ID yet.'
+                      : 'A vip=true push-filter match is not confirmed.'}
+              {data.oneSignal.pushSubscription === 'unknown' ? ' Push subscription status is unknown.' : ''}
+            </p>
+          </div>
+          <Button type="button" variant="outline" disabled={isSaving} onClick={() => void updateDevice({ action: 'sync' })} className="h-10 shrink-0 border-zinc-700 text-zinc-100">
+            {isSaving ? 'Syncing…' : 'Sync OneSignal tag'}
+          </Button>
+        </section>
         <div className="grid gap-4 border-t border-zinc-800 pt-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
           <Field>
             <FieldLabel htmlFor="vip-extension-days" className="text-zinc-200">Extend subscription</FieldLabel>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { hasValidAdminSession } from '@/lib/admin-session'
 import { changeVipAccess, getAdminDeviceRecord, isDeviceId } from '@/lib/device-profile-server'
+import { getOneSignalVipTagStatus, syncOneSignalVipTag } from '@/lib/onesignal-server'
 
 export const runtime = 'nodejs'
 
@@ -23,7 +24,8 @@ export async function GET(request: Request) {
     if (!device) {
       return NextResponse.json({ error: 'No device was found with that ID.' }, { status: 404, headers: noStore })
     }
-    return NextResponse.json({ device }, { headers: noStore })
+    const oneSignal = await getOneSignalVipTagStatus(deviceId)
+    return NextResponse.json({ device, oneSignal }, { headers: noStore })
   } catch {
     return NextResponse.json({ error: 'Device lookup failed. Please try again.' }, { status: 503, headers: noStore })
   }
@@ -31,6 +33,9 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   if (!hasValidAdminSession(request)) return unauthorized()
+  if (request.headers.get('origin') !== new URL(request.url).origin) {
+    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403, headers: noStore })
+  }
 
   let body: unknown
   try {
@@ -48,8 +53,10 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Enter a valid TSL device ID.' }, { status: 400, headers: noStore })
   }
 
-  let action: { type: 'set'; active: boolean } | { type: 'extend'; days: number }
-  if ('action' in body && body.action === 'set' && 'active' in body && typeof body.active === 'boolean') {
+  let action: { type: 'set'; active: boolean } | { type: 'extend'; days: number } | { type: 'sync' }
+  if ('action' in body && body.action === 'sync') {
+    action = { type: 'sync' }
+  } else if ('action' in body && body.action === 'set' && 'active' in body && typeof body.active === 'boolean') {
     action = { type: 'set', active: body.active }
   } else if (
     'action' in body &&
@@ -66,12 +73,20 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const updated = await changeVipAccess(deviceId, action)
-    if (!updated) {
+    if (action.type !== 'sync') {
+      const updated = await changeVipAccess(deviceId, action)
+      if (!updated) {
+        return NextResponse.json({ error: 'No device was found with that ID.' }, { status: 404, headers: noStore })
+      }
+    }
+
+    const currentDevice = await getAdminDeviceRecord(deviceId)
+    if (!currentDevice) {
       return NextResponse.json({ error: 'No device was found with that ID.' }, { status: 404, headers: noStore })
     }
+    const oneSignal = await syncOneSignalVipTag(deviceId, currentDevice.vipActive)
     const device = await getAdminDeviceRecord(deviceId)
-    return NextResponse.json({ device }, { headers: noStore })
+    return NextResponse.json({ device, oneSignal }, { headers: noStore })
   } catch {
     return NextResponse.json({ error: 'VIP access could not be updated. Please try again.' }, { status: 503, headers: noStore })
   }
