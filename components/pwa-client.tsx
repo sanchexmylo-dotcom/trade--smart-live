@@ -9,23 +9,7 @@ async function prepareServiceWorkers() {
   if (!('serviceWorker' in navigator)) return
 
   try {
-    const registrations = await navigator.serviceWorker.getRegistrations()
-    const rootScope = new URL('/', window.location.origin).href
-    const staleOneSignalRegistrations = registrations.filter((registration) => {
-      if (registration.scope !== rootScope) return false
-      return [registration.active, registration.waiting, registration.installing].some((worker) => {
-        if (!worker) return false
-        try {
-          return new URL(worker.scriptURL).pathname === '/OneSignalSDKWorker.js'
-        } catch {
-          return false
-        }
-      })
-    })
-    await Promise.all(staleOneSignalRegistrations.map((registration) => registration.unregister()))
-
-    const appRegistration = await navigator.serviceWorker.register('/sw.js')
-    await appRegistration.update()
+    await navigator.serviceWorker.register('/sw.js')
   } catch (error) {
     console.error('[PWA] Service worker preparation failed.', error instanceof Error ? error.message : 'Unknown error.')
   }
