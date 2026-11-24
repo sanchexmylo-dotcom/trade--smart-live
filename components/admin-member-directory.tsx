@@ -2,15 +2,12 @@
 
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { Check, Copy, Search, Users } from 'lucide-react'
+import { Check, ChevronDown, Copy, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { AdminDeviceDirectoryEntry } from '@/lib/device-profile-types'
@@ -32,6 +29,10 @@ function getStatus(device: AdminDeviceDirectoryEntry) {
   if (!device.vipActive) return 'Standard' as const
   if (expiry !== null && expiry - Date.now() <= 7 * 24 * 60 * 60 * 1000) return 'Expiring Soon' as const
   return 'Active' as const
+}
+
+function isActiveVip(device: AdminDeviceDirectoryEntry) {
+  return device.vipActive && getStatus(device) !== 'Expired'
 }
 
 function formatDateTime(value: string | null) {
@@ -66,7 +67,7 @@ export default function AdminMemberDirectory({ onManage }: Props) {
   const [filter, setFilter] = useState<DirectoryFilter>('all')
   const [copiedId, setCopiedId] = useState('')
   const [copyError, setCopyError] = useState('')
-  const activeCount = devices.filter((device) => device.vipActive).length
+  const activeCount = devices.filter(isActiveVip).length
   const expiredCount = devices.filter((device) => getStatus(device) === 'Expired').length
   const counts: Record<DirectoryFilter, number> = {
     all: devices.length,
@@ -74,18 +75,22 @@ export default function AdminMemberDirectory({ onManage }: Props) {
     expired: expiredCount,
   }
   const visibleDevices = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase()
+    const normalizedQuery = query.trim().toLocaleLowerCase()
     return devices.filter((device) => {
       const status = getStatus(device)
       const matchesFilter = filter === 'all'
-        || (filter === 'active' && device.vipActive)
+        || (filter === 'active' && isActiveVip(device))
         || (filter === 'expired' && status === 'Expired')
+      const matchesName = [device.memberName, device.displayName]
+        .some((name) => name.toLocaleLowerCase().includes(normalizedQuery))
       const matchesQuery = !normalizedQuery
-        || device.memberName.toLowerCase().includes(normalizedQuery)
-        || device.deviceId.toLowerCase().includes(normalizedQuery)
+        || matchesName
+        || device.deviceId.toLocaleLowerCase().includes(normalizedQuery)
       return matchesFilter && matchesQuery
     }).sort((first, second) => {
-      const nameOrder = first.memberName.localeCompare(second.memberName)
+      const firstName = first.memberName.trim() || first.displayName.trim()
+      const secondName = second.memberName.trim() || second.displayName.trim()
+      const nameOrder = firstName.localeCompare(secondName)
       return nameOrder || first.deviceId.localeCompare(second.deviceId)
     })
   }, [devices, filter, query])
@@ -103,20 +108,22 @@ export default function AdminMemberDirectory({ onManage }: Props) {
 
   return (
     <Card className="border-slate-800/80 bg-slate-900/70 text-slate-100 shadow-xl shadow-blue-950/15">
-      <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <CardDescription className="text-cyan-200">MEMBERSHIP OVERVIEW</CardDescription>
-          <CardTitle className="mt-1 text-xl text-white">Member &amp; VIP directory</CardTitle>
-          <CardDescription className="mt-1 max-w-2xl leading-relaxed text-slate-400">
-            Search every registered device, check membership expiry, and jump straight to access controls.
-          </CardDescription>
-        </div>
-        <div className="flex items-center gap-2 self-start rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-sm text-slate-300">
-          <Users aria-hidden="true" className="text-cyan-200" />
-          <span><strong className="font-semibold text-white">{devices.length}</strong> members</span>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/70 md:px-6 [&::-webkit-details-marker]:hidden">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">Membership overview</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Member &amp; VIP directory</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-400">Search members and jump straight to VIP access controls.</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="flex flex-col items-end gap-1 text-xs text-slate-300 sm:flex-row sm:items-center sm:gap-3 sm:text-sm">
+              <span><strong className="font-semibold text-white">{devices.length}</strong> members</span>
+              <span><strong className="font-semibold text-emerald-200">{activeCount}</strong> active VIP</span>
+            </div>
+            <ChevronDown aria-hidden="true" className="size-5 shrink-0 text-cyan-200 transition-transform group-open:rotate-180" />
+          </div>
+        </summary>
+        <CardContent className="flex flex-col gap-4 pb-5 md:pb-6">
         <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <Input
@@ -153,7 +160,7 @@ export default function AdminMemberDirectory({ onManage }: Props) {
           <ul className="grid gap-3 lg:grid-cols-2">
             {visibleDevices.map((device) => {
               const status = getStatus(device)
-              const memberName = device.memberName.trim() || 'Name not added'
+              const memberName = device.memberName.trim() || device.displayName.trim() || 'Name not added'
               const plan = device.planDurationDays > 0
                 ? `${device.planDurationDays}-day VIP`
                 : device.planExpiresAt
@@ -181,7 +188,7 @@ export default function AdminMemberDirectory({ onManage }: Props) {
                           </Button>
                         </div>
                       </div>
-                      <Badge variant="outline" className={`shrink-0 ${statusClasses(status)}`}>{status}</Badge>
+                      <Badge variant="outline" className={`shrink-0 ${statusClasses(status)}`}>{status === 'Active' ? 'Active VIP' : status}</Badge>
                     </div>
                     <dl className="grid grid-cols-2 gap-3 border-t border-slate-800/80 pt-3 text-sm">
                       <div className="min-w-0">
@@ -204,7 +211,8 @@ export default function AdminMemberDirectory({ onManage }: Props) {
         )}
         {copyError && <p role="alert" className="text-sm text-amber-200">{copyError}</p>}
         <p aria-live="polite" className="sr-only">{copiedId ? `${copiedId} copied to clipboard.` : ''}</p>
-      </CardContent>
+        </CardContent>
+      </details>
     </Card>
   )
 }
