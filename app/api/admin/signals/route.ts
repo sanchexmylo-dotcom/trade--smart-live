@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { hasValidAdminSession } from '@/lib/admin-session'
 import { adminDb, adminStorage, FieldValue } from '@/lib/firebase-admin'
 import { sendVipSignalPush } from '@/lib/onesignal-server'
+import { sendNativeVipSignalPush } from '@/lib/native-push-server'
 
 export const runtime = 'nodejs'
 
@@ -111,7 +112,8 @@ export async function POST(request: Request) {
     }, { merge: true })
     await batch.commit()
 
-    const push = await sendVipSignalPush({
+    const signalForPush = {
+      id: signalRef.id,
       pair,
       action: action as 'BUY' | 'SELL',
       entry,
@@ -120,13 +122,25 @@ export async function POST(request: Request) {
       ...(tp2 ? { tp2 } : {}),
       ...(tp3 ? { tp3 } : {}),
       ...(tp4 ? { tp4 } : {}),
-    })
+    }
+    const [push, nativePush] = await Promise.all([
+      sendVipSignalPush(signalForPush),
+      sendNativeVipSignalPush(signalForPush),
+    ])
     return NextResponse.json({
       id: signalRef.id,
       pushAccepted: push.accepted,
       pushRecipients: push.recipients,
       ...(push.notificationId ? { pushNotificationId: push.notificationId } : {}),
       ...(push.error ? { pushError: push.error } : {}),
+      nativePush: {
+        accepted: nativePush.accepted,
+        recipients: nativePush.recipients,
+        sent: nativePush.sent,
+        failed: nativePush.failed,
+        invalidTokensRemoved: nativePush.invalidTokensRemoved,
+        ...(nativePush.error ? { error: nativePush.error } : {}),
+      },
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (uploadedObject) await uploadedObject.delete({ ignoreNotFound: true }).catch(() => undefined)

@@ -48,10 +48,12 @@ export default function SignalCard({ signal, index, isLocked, deviceToken }: Sig
   }, [])
 
   return <motion.article
+    id={`signal-${signal.id}`}
+    tabIndex={-1}
     initial={{ opacity: 0, y: 12 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay: index * 0.06, type: 'spring', stiffness: 420, damping: 28 }}
-    className={`mb-3 overflow-hidden rounded-2xl border bg-slate-950/90 px-4 py-3.5 shadow-xl shadow-black/20 ${buy ? 'border-emerald-500/25' : 'border-rose-500/25'}`}
+    className={`mb-3 scroll-mt-24 overflow-hidden rounded-2xl border bg-slate-950/90 px-4 py-3.5 shadow-xl shadow-black/20 focus:outline-none ${buy ? 'border-emerald-500/25' : 'border-rose-500/25'}`}
   >
     <header className="flex min-w-0 items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2.5">

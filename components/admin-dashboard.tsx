@@ -134,6 +134,7 @@ export default function AdminDashboard() {
         pushRecipients?: number | null
         pushNotificationId?: string
         pushError?: string
+        nativePush?: { sent?: number; recipients?: number; failed?: number; error?: string }
       }
       if (!response.ok || !result.id) {
         setSignalFeedback({ status: 'error', message: result.error || 'Could not save this signal. Please try again.' })
@@ -143,13 +144,13 @@ export default function AdminDashboard() {
       if (!result.pushAccepted || !result.pushNotificationId) {
         setSignalFeedback({
           status: 'error',
-          message: `Signal saved, but OneSignal could not confirm the push notification. ${result.pushError || 'OneSignal did not return a notification ID.'}`,
+          message: `Signal saved, but OneSignal could not confirm the push notification. ${result.pushError || 'OneSignal did not return a notification ID.'} Android FCM: ${result.nativePush?.sent ?? 0} sent to ${result.nativePush?.recipients ?? 0} registered VIP device(s).${result.nativePush?.error ? ` ${result.nativePush.error}` : ''}`,
           notificationId: result.pushNotificationId,
         })
       } else {
         setSignalFeedback({
           status: 'success',
-          message: 'Signal push sent to VIP subscribers.',
+          message: `Signal push sent to VIP subscribers. Android FCM: ${result.nativePush?.sent ?? 0} sent to ${result.nativePush?.recipients ?? 0} registered VIP device(s).${result.nativePush?.error ? ` ${result.nativePush.error}` : ''}`,
           notificationId: result.pushNotificationId,
         })
       }
