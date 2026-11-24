@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   getDeviceProfileForToken,
   registerDevice,
+  updateDeviceFcmToken,
   updateDeviceMemberName,
 } from '@/lib/device-profile-server'
 
@@ -61,7 +62,23 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400, headers: noStore })
   }
 
-  if (!body || typeof body !== 'object' || !('memberName' in body) || typeof body.memberName !== 'string') {
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid device profile update.' }, { status: 400, headers: noStore })
+  }
+
+  if ('fcmToken' in body && !('memberName' in body) && typeof body.fcmToken === 'string') {
+    try {
+      const profile = await updateDeviceFcmToken(deviceToken, body.fcmToken)
+      if (!profile) {
+        return NextResponse.json({ error: 'Device profile was not found.' }, { status: 404, headers: noStore })
+      }
+      return NextResponse.json({ profile }, { headers: noStore })
+    } catch {
+      return NextResponse.json({ error: 'The native push token could not be saved.' }, { status: 400, headers: noStore })
+    }
+  }
+
+  if (!('memberName' in body) || 'fcmToken' in body || typeof body.memberName !== 'string') {
     return NextResponse.json({ error: 'Enter a valid member name.' }, { status: 400, headers: noStore })
   }
 

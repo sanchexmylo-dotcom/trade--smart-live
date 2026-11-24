@@ -14,6 +14,7 @@ import { PwaInstallButton, PushNotificationsButton } from './pwa-client'
 import VipInstallGuide from './vip-install-guide'
 import { getOneSignalClient } from '@/lib/onesignal-client'
 import SignalCard, { type Signal } from './signal-card'
+import NativePushBridge from './native-push-bridge'
 import PaymentModal from './payment-modal'
 import ProfileTab from './profile-tab'
 import type { DeviceProfile } from '@/lib/device-profile-types'
@@ -98,6 +99,7 @@ export default function VipForexApp() {
   const brandTapCount = useRef(0)
   const brandTapTimer = useRef<number | null>(null)
   const [activeTab, setActiveTab] = useState('Signals')
+  const [pendingNativeSignalId, setPendingNativeSignalId] = useState<string | null>(null)
   const [signals, setSignals] = useState<Signal[]>([])
   const [history, setHistory] = useState<Signal[]>([])
   const [deviceIdentity, setDeviceIdentity] = useState<DeviceIdentity | null>(null)
@@ -311,6 +313,27 @@ export default function VipForexApp() {
     }
   }, [activeTab, isVip])
 
+  function openNativeSignal(signalId: string | null) {
+    const activeSignalId = signalId ?? (signals[0] ? String(signals[0].id) : null)
+    if (activeSignalId) setPendingNativeSignalId(activeSignalId)
+    setActiveTab('Signals')
+  }
+
+  useEffect(() => {
+    if (!pendingNativeSignalId || activeTab !== 'Signals') return
+    if (!signals.some((signal) => String(signal.id) === pendingNativeSignalId)) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const signalCard = document.getElementById(`signal-${pendingNativeSignalId}`)
+      if (!signalCard) return
+      signalCard.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      signalCard.focus({ preventScroll: true })
+      setPendingNativeSignalId(null)
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeTab, pendingNativeSignalId, signals])
+
   function handleBrandTap() {
     brandTapCount.current += 1
     if (brandTapTimer.current) window.clearTimeout(brandTapTimer.current)
@@ -324,6 +347,7 @@ export default function VipForexApp() {
   const tabs = [['Signals', LayoutDashboard], ['Journal', NotebookPen], ['Tips', Sparkles], ['Profile', UserRound]] as const
 
   return <main className="mx-auto min-h-screen w-full max-w-md overflow-x-hidden bg-[#050814] text-slate-100 selection:bg-cyan-300 selection:text-slate-950">
+    <NativePushBridge deviceToken={deviceIdentity?.deviceToken ?? null} enabled={deviceProfile?.vipActive === true} onOpenSignal={openNativeSignal} />
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden border-x border-slate-800/80 bg-[#050814]"><header className="flex items-center justify-between border-b border-[#27272a] px-4 pb-5 pt-6"><button type="button" aria-label="Trade Smart Live" onClick={handleBrandTap} className="relative z-30 pointer-events-auto flex items-center gap-3 text-left transition-transform active:scale-95"><div className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-blue-400/30 bg-white shadow-lg shadow-blue-950/30"><Image src="/logo.png" alt="" width={36} height={36} priority className="size-full object-contain" /></div><div className="min-w-0 overflow-hidden"><p className="whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold uppercase tracking-[0.2em] text-transparent">TRADE SMART LIVE</p><p className="mt-0.5 whitespace-nowrap bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-600 bg-clip-text text-sm font-bold text-transparent">Trade Smart Live</p></div></button><div className="flex gap-2"><button type="button" aria-label="Notifications" className="grid h-9 w-9 touch-manipulation place-items-center rounded-lg border border-slate-800/80 bg-slate-900/70 text-zinc-400 shadow-2xl shadow-indigo-950/20 transition-all active:scale-95"><Bell size={16} /></button></div></header>
       <div className="relative z-30 grid grid-cols-3 pointer-events-auto border-b border-[#27272a] bg-slate-950 p-1"><button onClick={() => setActiveTab('Signals')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'Signals' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">VIP Signals</span><span className="sm:hidden">Signals</span></button><button onClick={() => setActiveTab('History')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'History' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">Track Record</span><span className="sm:hidden">History</span></button><button onClick={() => setActiveTab('Journal')} className={`relative z-40 pointer-events-auto min-w-0 overflow-hidden px-1 text-center touch-manipulation whitespace-nowrap rounded-md py-2 text-[9px] font-bold tracking-tight transition-all active:scale-95 ${activeTab === 'Journal' ? 'bg-[#27272a] text-white' : 'text-slate-300'}`}><span className="hidden sm:inline">Journal</span><span className="sm:hidden">Journal</span></button></div>
       <section aria-label="Current tab content" className="min-w-0 flex-1 px-4 pb-28 pt-6">

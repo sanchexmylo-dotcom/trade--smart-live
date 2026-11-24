@@ -334,6 +334,30 @@ export async function updateDeviceMemberName(deviceToken: string, rawMemberName:
   return getDeviceProfileForToken(deviceToken)
 }
 
+export async function updateDeviceFcmToken(deviceToken: string, rawFcmToken: string) {
+  if (!isDeviceToken(deviceToken)) return null
+  const fcmToken = rawFcmToken.trim()
+  if (!fcmToken || fcmToken.length > 4096 || /[\u0000-\u001f\u007f]/.test(fcmToken)) {
+    throw new Error('Invalid FCM token.')
+  }
+
+  const deviceId = await getDeviceIdForToken(deviceToken)
+  if (!deviceId) return null
+
+  const deviceRef = devices().doc(deviceId)
+  const snapshot = await deviceRef.get()
+  if (!snapshot.exists) return null
+
+  if (snapshot.get('fcmToken') !== fcmToken) {
+    await deviceRef.update({
+      fcmToken,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+  }
+
+  return getDeviceProfileForToken(deviceToken)
+}
+
 export async function changeVipAccess(
   deviceId: string,
   action: { type: 'set'; active: boolean } | { type: 'extend'; days: number },
