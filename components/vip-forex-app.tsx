@@ -102,6 +102,7 @@ export default function VipForexApp() {
   const [history, setHistory] = useState<Signal[]>([])
   const [deviceIdentity, setDeviceIdentity] = useState<DeviceIdentity | null>(null)
   const [deviceSetupError, setDeviceSetupError] = useState('')
+  const [pushReady, setPushReady] = useState(false)
   const [pricingOpen, setPricingOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [installGuideOpen, setInstallGuideOpen] = useState(false)
@@ -208,12 +209,29 @@ export default function VipForexApp() {
   }, [])
 
   useEffect(() => {
-    if (!deviceProfile) return
+    if (!deviceProfile) {
+      setPushReady(false)
+      return
+    }
+
+    const syncPushReadiness = () => {
+      const oneSignal = getOneSignalClient()
+      setPushReady(Boolean(
+        deviceProfile.vipActive &&
+        oneSignal?.Notifications.isPushSupported() &&
+        oneSignal.Notifications.permission &&
+        oneSignal.User.PushSubscription.optedIn,
+      ))
+    }
 
     const syncVipAudience = () => {
       const oneSignal = getOneSignalClient()
-      if (!oneSignal) return
+      if (!oneSignal) {
+        setPushReady(false)
+        return
+      }
       const syncVersion = ++vipSyncVersionRef.current
+      setPushReady(false)
 
       void (async () => {
         await oneSignal.login(deviceProfile.deviceId)
@@ -221,16 +239,26 @@ export default function VipForexApp() {
 
         if (deviceProfile.vipActive) {
           await oneSignal.User.addTag('vip', 'true')
+          if (oneSignal.Notifications.isPushSupported()) {
+            if (!oneSignal.Notifications.permission && typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
+              await oneSignal.Notifications.requestPermission()
+            }
+            if (oneSignal.Notifications.permission && !oneSignal.User.PushSubscription.optedIn) {
+              await oneSignal.User.PushSubscription.optIn()
+            }
+          }
         } else {
           await oneSignal.User.removeTag('vip')
         }
         if (syncVersion !== vipSyncVersionRef.current) return
+        syncPushReadiness()
         console.info('[OneSignal] VIP tag update submitted by the browser SDK.', {
           deviceId: deviceProfile.deviceId,
           vipTag: deviceProfile.vipActive ? 'true' : 'removed',
         })
       })().catch((error: unknown) => {
         if (syncVersion !== vipSyncVersionRef.current) return
+        setPushReady(false)
         console.error('[OneSignal] VIP audience tag sync failed.', {
           deviceId: deviceProfile.deviceId,
           desiredVipTag: deviceProfile.vipActive ? 'true' : 'removed',
@@ -241,9 +269,11 @@ export default function VipForexApp() {
 
     syncVipAudience()
     window.addEventListener('trade-smart-onesignal-ready', syncVipAudience)
+    window.addEventListener('trade-smart-onesignal-status-change', syncPushReadiness)
     return () => {
       vipSyncVersionRef.current += 1
       window.removeEventListener('trade-smart-onesignal-ready', syncVipAudience)
+      window.removeEventListener('trade-smart-onesignal-status-change', syncPushReadiness)
     }
   }, [deviceProfile?.deviceId, deviceProfile?.vipActive])
 
@@ -317,7 +347,7 @@ export default function VipForexApp() {
         {activeTab === 'History' && <HistoryView signals={history} />}
         {activeTab === 'Journal' && <JournalTab deviceToken={deviceIdentity?.deviceToken ?? null} referralCode={deviceIdentity?.referralCode ?? null} />}
         {activeTab === 'Tips' && <TipsFeed />}
-        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} onSaveMemberName={saveMemberName} /><PushNotificationsButton /><PwaInstallButton /></div>}
+        {activeTab === 'Profile' && <div className="flex flex-col gap-4"><ProfileTab profile={deviceProfile} isLoading={deviceProfileLoading} pushReady={pushReady} error={deviceSetupError || deviceProfileError?.message} onRetry={() => { if (deviceIdentity) void refreshDeviceProfile(); else window.location.reload() }} onUpgrade={() => setPricingOpen(true)} onSaveMemberName={saveMemberName} /><PushNotificationsButton /><PwaInstallButton /></div>}
       </section>
       <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 pointer-events-auto border-t border-slate-800/80 bg-[#050814]/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"><div className="mx-auto flex h-16 w-full max-w-md items-center justify-around pointer-events-auto">{tabs.map(([label, Icon]) => <button type="button" key={label} onClick={() => setActiveTab(label)} aria-current={activeTab === label ? 'page' : undefined} className={`relative z-10 flex h-full min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${activeTab === label ? 'text-cyan-300' : 'text-slate-300'}`}><Icon size={18} strokeWidth={activeTab === label ? 2.2 : 1.8} /><span>{label}</span></button>)}</div></nav>
     </div>

@@ -20,6 +20,7 @@ const appUrl = 'https://trade-smart-live.vercel.app'
 type ProfileTabProps = {
   profile: DeviceProfile | undefined
   isLoading: boolean
+  pushReady: boolean
   error?: string
   onRetry: () => void
   onUpgrade: () => void
@@ -34,7 +35,7 @@ function formatDate(value: string | null) {
     : date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export default function ProfileTab({ profile, isLoading, error, onRetry, onUpgrade, onSaveMemberName }: ProfileTabProps) {
+export default function ProfileTab({ profile, isLoading, pushReady, error, onRetry, onUpgrade, onSaveMemberName }: ProfileTabProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [copyError, setCopyError] = useState('')
   const [memberName, setMemberName] = useState(profile?.memberName ?? '')
@@ -98,6 +99,9 @@ export default function ProfileTab({ profile, isLoading, error, onRetry, onUpgra
               ? `VIP access is active through ${formatDate(profile.planExpiresAt)}.`
               : 'Your account is on the Free plan. VIP access is enabled after verified payment.'}
           </p>
+          {profile.vipActive && <p role="status" aria-live="polite" className={`rounded-lg border px-3 py-2 text-sm font-semibold ${pushReady ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-100'}`}>
+            {pushReady ? 'Push Ready (VIP Active)' : 'VIP push setup is syncing or awaiting notification permission.'}
+          </p>}
           <FieldGroup className="gap-4">
             <Field>
               <FieldLabel htmlFor="member-name" className="text-slate-200">Member name</FieldLabel>
